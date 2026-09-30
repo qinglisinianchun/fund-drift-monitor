@@ -27,7 +27,7 @@ attempt() {  # attempt <序号> <显示名> <URL> <extra curl 参数...>
         -w 'HTTP %{http_code} | %{size_download} B | 共 %{time_total}s' \
         -A "$UA" "$@" "$url" 2>&1); rc=$?
 
-  printf '  %d) %-46s ' "$n" "$name"
+  printf '  %s) %-46s ' "$n" "$name"
   if [ "$rc" -ne 0 ]; then
     printf '❌ 失败 rc=%s（%s）\n' "$rc" "$(printf '%s' "$meta" | tr -d '\n' | tail -c 60)"
     return 1

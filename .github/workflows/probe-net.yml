@@ -15,6 +15,7 @@ on:
       - '.github/workflows/probe-net.yml'
       - 'scripts/probe-net.sh'
       - 'scripts/probe-holdings.sh'
+      - 'scripts/probe-reliability.sh'
 
 permissions:
   contents: read
@@ -50,6 +51,23 @@ jobs:
 
       - name: 变量拆解复测
         run: bash scripts/probe-holdings.sh
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ④ 可靠性抽样：不问「通不通」，问「十次里有几次通」
+  #    持仓接口上一轮出现「第 1 次成功、后面全超时、第 6 次又成功」，
+  #    要抽样测成功率，并单独看强制 HTTP/1.1 有没有帮助。
+  #    顺便给核心命脉（净值接口）也做重复抽样。
+  # ─────────────────────────────────────────────────────────────────────
+  reliability:
+    name: 接口可靠性抽样
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 重复抽样
+        run: bash scripts/probe-reliability.sh
 
   # ─────────────────────────────────────────────────────────────────────
   # ② 回写能力：runner 把结果 commit 回仓库

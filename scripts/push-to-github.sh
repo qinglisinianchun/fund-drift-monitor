@@ -23,11 +23,16 @@ strip_cr() { printf '%s' "${1-}" | tr -d '\r'; }
 
 # --force-local：明知远端有本地没有的提交（比如你在 GitHub 网页上直接改过文件），
 #               仍然要用本地内容覆盖它。默认不带这个参数，会先停下来问你。
+# --rebase     ：远端有本地没有的提交时，不中断，而是先把远端历史叠上来再推。
+#               适合「云端任务会把数据写回仓库」的项目 —— 那种情况下远端天天有新提交，
+#               默认的「停下来问」会变成每次都要人工处理。本地未提交的改动会自动暂存再还原。
 FORCE_LOCAL=0
+REBASE=0
 ARGS=()
 for _a in ${1+"$@"}; do
   case "$_a" in
     --force-local) FORCE_LOCAL=1 ;;
+    --rebase)      REBASE=1 ;;
     *)             ARGS+=("$_a") ;;
   esac
 done
@@ -39,8 +44,9 @@ GH_EMAIL="$(strip_cr "${ARGS[2]-}")"
 
 if [ -z "$GH_USER" ] || [ -z "$GH_REPO" ]; then
   echo "用法: bash scripts/push-to-github.sh <GitHub用户名> <仓库名> [邮箱]" >&2
-  echo "示例: bash scripts/push-to-github.sh zhangsan workbuddy-actions" >&2
-  echo "      bash scripts/push-to-github.sh zhangsan workbuddy-actions --force-local" >&2
+  echo "示例: bash scripts/push-to-github.sh zhangsan fund-drift-monitor" >&2
+  echo "      bash scripts/push-to-github.sh zhangsan fund-drift-monitor --rebase" >&2
+  echo "      bash scripts/push-to-github.sh zhangsan fund-drift-monitor --force-local" >&2
   exit 1
 fi
 
@@ -286,20 +292,43 @@ if [ $FETCH_RC -eq 0 ] && git rev-parse --verify --quiet refs/remotes/origin/mai
   # 这一步继续下去会用本地内容覆盖那些文件，网页上的改动会**静默消失**，
   # 所以默认先停下来说清楚，要覆盖必须显式加 --force-local。
   REMOTE_AHEAD="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
-  if [ "$REMOTE_AHEAD" != "0" ] && [ "$FORCE_LOCAL" != "1" ]; then
+  if [ "$REMOTE_AHEAD" != "0" ] && [ "$FORCE_LOCAL" != "1" ] && [ "$REBASE" = "1" ]; then
+    # 安全叠加：先把本地未提交的改动暂存，把远端历史 rebase 上来，再还原改动。
+    # 这样既不会像 reset --hard 那样抹掉工作区，也不会覆盖远端已有的提交。
     echo
-    echo "[!] 远端有 $REMOTE_AHEAD 个你本地没有的提交 —— 多半是你直接在 GitHub 网页上改过文件。"
+    echo "[--] 远端有 $REMOTE_AHEAD 个本地没有的提交，按 --rebase 先叠加远端历史"
+    STASHED=0
+    if [ -n "$(git status --porcelain)" ]; then
+      git stash push -u -q -m "push-to-github: 临时暂存" && STASHED=1
+    fi
+    if git pull --rebase origin main >/dev/null 2>&1; then
+      echo "[OK] 已叠加远端提交"
+    else
+      echo "[x] 叠加失败（多半是文件冲突）。排查：git status / git rebase --abort"
+      [ "$STASHED" = "1" ] && git stash pop >/dev/null 2>&1
+      exit 1
+    fi
+    if [ "$STASHED" = "1" ]; then
+      git stash pop >/dev/null 2>&1 && echo "[OK] 本地改动已还原" \
+        || { echo "[x] 本地改动还原失败，但改动还在 stash 里：git stash list"; exit 1; }
+    fi
+  elif [ "$REMOTE_AHEAD" != "0" ] && [ "$FORCE_LOCAL" != "1" ]; then
+    echo
+    echo "[!] 远端有 $REMOTE_AHEAD 个你本地没有的提交。两种情况都长这样："
+    echo "      ① 你直接在 GitHub 网页上改过文件；"
+    echo "      ② 仓库里的云端任务（Actions）跑完把数据写回来了 —— 这是常态，不用慌。"
     echo
     echo "    这些提交是："
     git log --oneline HEAD..origin/main | sed 's/^/      /'
     echo
-    echo "    涉及的文件（继续推的话，本地版本会覆盖它们）："
+    echo "    涉及的文件（直接推的话，本地版本会覆盖它们）："
     git diff --name-only HEAD origin/main | sed 's/^/      /'
     echo
     echo "    选一条："
-    echo "      A) 想保留网页上的改动 → 先在本地同步，再重跑本脚本"
-    echo "           git fetch origin && git reset --hard origin/main"
-    echo "      B) 确认要用本地覆盖远端 → 加参数重跑"
+    echo "      A) 保留远端的提交（推荐）—— 让远端历史叠到本地之上，本地改动一个不丢"
+    echo "           bash scripts/push-to-github.sh $GH_USER $GH_REPO --rebase"
+    echo "         云端任务会往回写数据的仓库，建议以后固定加 --rebase。"
+    echo "      B) 确认要用本地覆盖远端 —— 会丢弃远端那些提交（含云端写入的数据）"
     echo "           bash scripts/push-to-github.sh $GH_USER $GH_REPO --force-local"
     echo
     exit 1
