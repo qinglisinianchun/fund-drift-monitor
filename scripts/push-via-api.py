@@ -27,6 +27,7 @@
 import base64
 import json
 import os
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -40,8 +41,25 @@ def get_token():
     if tok:
         return tok
     # 从 Windows 凭据管理器读（GCM 存的，git push 用的就是它）
+    #
+    # ★ 必须【显式指定】helper 列表，不能靠机器上的配置。
+    #   Git for Windows 的 system 配置里写着 credential.helper = helper-selector，
+    #   而 credential.helper 是【累加】的 —— 不清掉它，每次查凭据都会先弹出
+    #   「Select a credential helper」窗口。正确写法是先塞一个【空值】把继承来的
+    #   列表重置掉，再挂上 GCM。
+    cmd = ['git']
+    gcm = shutil.which('git-credential-manager')
+    if gcm:
+        # ★ 路径里的反斜杠必须换成正斜杠，并且加双引号。
+        #   `!` 开头的 helper 是交给 sh 执行的，Windows 的反斜杠会被当转义符吃掉，
+        #   结果 helper 跑不起来、静默失败，报 "could not read Username"。
+        #   实测：反斜杠写法失败，正斜杠+引号写法成功。
+        gcm = gcm.replace('\\', '/')
+        cmd += ['-c', 'credential.helper=', '-c', f'credential.helper=!"{gcm}"']
+    cmd += ['-c', 'credential.interactive=false', 'credential', 'fill']
+
     p = subprocess.run(
-        ['git', '-c', 'credential.interactive=false', 'credential', 'fill'],
+        cmd,
         input='protocol=https\nhost=github.com\n\n',
         capture_output=True, text=True,
         env={**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GCM_INTERACTIVE': 'never'})

@@ -228,9 +228,23 @@ echo
 #    后面读到的 "not found" 才是可信的。
 # ---------------------------------------------------------------------------
 has_cred() {  # 只看系统里已存的凭据，绝不弹窗
+  # ★ 这里必须【显式指定】helper 列表，不能靠机器上的配置。
+  #
+  #   Git for Windows 的 system 配置（.../PortableGit/.../etc/gitconfig）里写着：
+  #       [credential] helper = helper-selector
+  #   而 credential.helper 是【累加】的 —— 不清掉它，每次查凭据都会先弹出
+  #   「Select a credential helper」窗口。这就是 git push / 本脚本运行时
+  #   老弹窗的根源；勾选窗口里的「Always use this from now on」也没用，
+  #   那一项只是写个默认值，GUI 照样弹（Git for Windows 维护者原话）。
+  #
+  #   正确写法：先塞一个【空值】把继承来的列表重置掉，再挂上 GCM。
+  local gcm cred_args=(git)
+  if gcm="$(command -v git-credential-manager 2>/dev/null)" && [ -n "$gcm" ]; then
+    cred_args+=(-c credential.helper= -c "credential.helper=!\"$gcm\"")
+  fi
   printf 'protocol=https\nhost=github.com\n\n' \
     | GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never \
-      git -c credential.interactive=false credential fill 2>/dev/null \
+      "${cred_args[@]}" -c credential.interactive=false credential fill 2>/dev/null \
     | grep -q '^password=.'
 }
 
