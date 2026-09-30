@@ -1,0 +1,26 @@
+# 强制文本文件在仓库里一律使用 LF。
+#
+# 为什么必须写这一行：
+#   本机（Git for Windows）core.autocrlf=true，工作区文件会被检出成 CRLF。
+#   正常走 git commit 时，autocrlf 会把 CRLF 转回 LF 再入库，没问题。
+#   但用 API 直推（scripts/push-via-api.py 读工作区原始字节）时【绕过】了这层转换，
+#   于是 CRLF 原样进了仓库 —— Linux runner 上的 bash 读到 \r 直接报：
+#       set: pipefail / invalid option name
+#       $'\r': command not found
+#       syntax error: unexpected end of file
+#   实测就是这么把两个探测脚本跑挂的（2026-09-30）。
+#   eol=lf 让工作区与仓库都保持 LF，两条推送路径都不会再出这个问题。
+* text=auto eol=lf
+
+# 二进制文件别做任何转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.zip  binary
+*.gz   binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
+*.pdf  binary

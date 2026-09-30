@@ -14,8 +14,11 @@
 
 用法
 ----
-    python push-via-api.py <owner> <repo> [分支] [提交信息]
-    # 推送内容 = 工作区相对上次提交有变化的所有文件
+    python push-via-api.py <owner> <repo> [分支] [提交信息] [--all]
+
+    默认：只推工作区里相对 HEAD 有变化的文件（相当于 git add -A && commit && push）
+    --all：把本地【所有 git 跟踪的文件】整份同步上去
+           （当本地有若干提交没推上去、而远端又被云端任务写过数据时用这个）
 
 令牌来源：环境变量 GITHUB_TOKEN；没设就读 Windows 凭据管理器里的 GitHub 凭据
 （与 git 用的是同一份，见技能 github-proxy-and-secrets）。
@@ -69,38 +72,80 @@ class GH:
             raise SystemExit(f'[x] {method} {path} → HTTP {e.code}\n{e.read().decode("utf-8", "replace")[:600]}')
 
 
+def _z(args):
+    """跑 git 并拿到 NUL 分隔的输出。
+
+    必须用 -z：git 默认 core.quotepath=true，中文文件名会被转义成
+    '"\\346\\216\\242..."' 这种带引号的八进制串，直接 open() 会报
+    OSError: Invalid argument。
+    """
+    out = subprocess.run(args, capture_output=True, check=True).stdout
+    return [x.decode('utf-8') for x in out.split(b'\0') if x]
+
+
+def blob_bytes(path):
+    """拿到「git 规范化之后」的文件字节，而不是工作区的原始字节。
+
+    这一步是必须的，不是优化。踩过的坑（2026-09-30）：
+      本机 core.autocrlf=true，工作区里的 .sh 是 CRLF；正常 git commit 会在入库时
+      把 CRLF 转回 LF，而直接用 open() 读工作区字节会【绕过】这层转换，
+      于是 CRLF 进了仓库 —— Linux runner 上 bash 报：
+          set: pipefail / invalid option name
+          $'\\r': command not found
+          syntax error: unexpected end of file
+      实测就是这么把两个脚本跑挂的。
+
+      `git hash-object -w --path=<p> <p>` 会按 .gitattributes / autocrlf 做一遍
+      与 commit 完全相同的转换并把对象写进本地对象库，再用 cat-file 读回来，
+      拿到的字节就与 git push 的结果一致了。
+    """
+    sha = subprocess.run(['git', 'hash-object', '-w', '--path', path, path],
+                         capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run(['git', 'cat-file', 'blob', sha],
+                          capture_output=True, check=True).stdout
+
+
 def changed_files():
     """工作区里相对 HEAD 有变化的文件（含新增、修改、删除）"""
-    out = subprocess.run(['git', 'status', '--porcelain'],
-                         capture_output=True, text=True, check=True).stdout
+    fields = _z(['git', 'status', '--porcelain', '-z'])
     add, dele = [], []
-    for line in out.splitlines():
-        if not line.strip():
-            continue
-        flag, path = line[:2], line[3:].strip()
-        if path.startswith('"') and path.endswith('"'):
-            path = path[1:-1]
-        if flag.strip() == 'D':
-            dele.append(path)
-        else:
-            add.append(path)
+    i = 0
+    while i < len(fields):
+        entry = fields[i]
+        flag, path = entry[:2], entry[3:]
+        i += 1
+        if flag[:1] in ('R', 'C'):      # 重命名/复制：后面还跟着原路径，跳过
+            i += 1
+        (dele if flag.strip() == 'D' else add).append(path)
     return add, dele
 
 
+def tracked_files():
+    """本地所有 git 跟踪的文件"""
+    return _z(['git', 'ls-files', '-z'])
+
+
 def main():
-    if len(sys.argv) < 3:
+    argv = [a for a in sys.argv[1:] if a != '--all']
+    use_all = '--all' in sys.argv[1:]
+
+    if len(argv) < 2:
         raise SystemExit(__doc__.strip().split('用法')[-1].strip())
-    owner, repo = sys.argv[1], sys.argv[2]
-    branch = sys.argv[3] if len(sys.argv) > 3 else 'main'
-    msg = sys.argv[4] if len(sys.argv) > 4 else 'chore: 通过 API 推送本地改动'
+    owner, repo = argv[0], argv[1]
+    branch = argv[2] if len(argv) > 2 else 'main'
+    msg = argv[3] if len(argv) > 3 else 'chore: 通过 API 推送本地改动'
 
     gh = GH(get_token())
     base = f'/repos/{owner}/{repo}'
 
-    add, dele = changed_files()
+    if use_all:
+        add, dele = tracked_files(), []
+    else:
+        add, dele = changed_files()
     if not add and not dele:
         print('[--] 工作区没有变化，无需推送')
         return
+    print(f'[--] 待上传 {len(add)} 个文件（--all={"是" if use_all else "否"}）')
 
     # 1) 当前分支指向的提交
     ref = gh.call('GET', f'{base}/git/ref/heads/{branch}')
@@ -110,15 +155,23 @@ def main():
 
     # 2) 把每个文件做成 blob
     tree_items = []
+    warned = 0
     for path in add:
-        with open(path, 'rb') as f:
-            raw = f.read()
+        raw = blob_bytes(path)
+        # 兜底告警：规范化之后文本文件里还不该有 CRLF。
+        # 真出现了说明 .gitattributes 没覆盖到，Linux 上的脚本会挂。
+        if path.lower().endswith(('.sh', '.yml', '.yaml', '.py', '.md', '.txt', '.json')) \
+                and b'\r\n' in raw:
+            print(f'     ⚠️  {path} 规范化后仍含 CRLF —— 检查 .gitattributes')
+            warned += 1
         blob = gh.call('POST', f'{base}/git/blobs', {
             'content': base64.b64encode(raw).decode('ascii'),
             'encoding': 'base64'})
         tree_items.append({'path': path.replace('\\', '/'), 'mode': '100644',
                            'type': 'blob', 'sha': blob['sha']})
         print(f'     + {path}  ({len(raw)} B)')
+    if warned:
+        print(f'[!] {warned} 个文件换行符异常，建议先跑 git add --renormalize .')
     for path in dele:
         # sha=None + mode 100644 表示删除
         tree_items.append({'path': path.replace('\\', '/'), 'mode': '100644',

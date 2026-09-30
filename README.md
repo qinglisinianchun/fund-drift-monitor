@@ -61,4 +61,20 @@ scripts/probe-net.sh               逐项接口探测 + 内容验真
 scripts/probe-holdings.sh          持仓接口变量拆解
 scripts/probe-reliability.sh       成功率抽样
 scripts/push-to-github.sh          推送脚本（自动识别 VPN 代理，支持 --rebase）
+scripts/push-via-api.py            兜底：github.com 被挡、但 api.github.com 能通时直推
 ```
+
+## 推不上去的时候
+
+代理白名单会变。实测出现过 `api.github.com` 返回 200、而 `github.com`
+报 `CONNECT tunnel failed, response 502` 的情况 —— 这时 `git push` 必然失败。
+
+用 API 直推兜底：
+
+```bash
+python scripts/push-via-api.py qinglisinianchun fund-drift-monitor main "提交信息"
+python scripts/push-via-api.py qinglisinianchun fund-drift-monitor main "提交信息" --all
+```
+
+`--all` = 把本地所有 git 跟踪的文件整份同步上去（本地有若干提交没推上去时用）。
+
