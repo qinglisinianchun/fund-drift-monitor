@@ -45,12 +45,17 @@ PUSH_COMMIT_MSG="test(probe): ..." bash scripts/push-to-github.sh qinglisinianch
 > **这个仓库固定加 `--rebase`。** 里面有云端任务会往回写数据，远端天天有新提交；
 > 不加的话脚本会停下来问，加了就自动安全叠加（本地未提交的改动会暂存再还原，不会丢）。
 
-## 三个坑（详见探测结论）
+## 四个坑（详见探测结论）
 
 1. **持仓接口必须带 Referer** —— 不带直接 404；`type=jjcc` 必须小写。
 2. **基金代码表是 http 明文会 301 跳转** —— curl 不加 `-L` 会拿到 0 字节，看起来像被拦。
 3. **接口会偶发超时** —— 实测同一 URL 出现过「第 1 次成功、后面 5 次全超时」，
    换个时间重跑又 100% 成功。**不是封禁，是抖动，重试机制必须保留。**
+4. **Windows 的 CRLF 会把 Linux 上的脚本跑挂** —— 本机 `core.autocrlf=true`，
+   用 API 直推读工作区原始字节会绕过 git 的规范化，CRLF 进仓库后 runner 上 bash 报
+   `syntax error: unexpected end of file`。本项目已用 `.gitattributes`（`* text=auto eol=lf`）
+   + `push-via-api.py` 走 `git hash-object` 双重保险。
+   诊断用 `git ls-files --eol`，**别用 grep 数 `\r`**。
 
 ## 目录
 
