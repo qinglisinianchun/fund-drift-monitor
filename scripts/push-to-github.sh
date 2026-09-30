@@ -369,7 +369,9 @@ else
   fi
   echo "[OK] 凭据扫描通过"
 
-  if git commit -m "chore: Buddy 加油站每日自动化（签到 + 好事喵出行 + 成长中心）" >/dev/null; then
+  # 提交信息可用 PUSH_COMMIT_MSG 覆盖；不设置时用这条中性文案。
+  # （原版脚本把「Buddy 加油站」写死在这里，复制到别的项目会留下错误的历史。）
+  if git commit -m "${PUSH_COMMIT_MSG:-chore: 同步本地改动（自动提交）}" >/dev/null; then
     echo "[OK] 已提交"
   fi
 fi
@@ -395,11 +397,7 @@ if [ "$PUSH_RC" -eq 0 ]; then
   echo
   echo "[OK] 推送完成：$WEB_URL"
   echo
-  echo "下一步（如果还没加过）：仓库 Settings → Secrets and variables → Actions"
-  echo "  → New repository secret → 名字 SERVERCHAN_KEY，值就是你 Server酱 的 SendKey"
-  echo "  已有的 WB_TOKEN / WB_USER_ID / WB_DOMAIN 不用动。"
-  echo
-  echo "想立刻验证：Actions → 左侧选「Buddy 加油站每日自动化」→ Run workflow"
+  echo "想立刻验证：$WEB_URL/actions → 选对应工作流 → Run workflow"
   rm -f "$PUSH_LOG" 2>/dev/null || true
   exit 0
 fi

@@ -14,6 +14,7 @@ on:
     paths:
       - '.github/workflows/probe-net.yml'
       - 'scripts/probe-net.sh'
+      - 'scripts/probe-holdings.sh'
 
 permissions:
   contents: read
@@ -32,6 +33,23 @@ jobs:
 
       - name: 逐项探测
         run: bash scripts/probe-net.sh
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ③ 持仓接口专项复测
+  #    同主机的费率页 2 秒返回 200，持仓接口却 404 / 45 秒超时，
+  #    把 Referer、参数、HTTP 版本这些变量一个个拆开看。
+  #    持仓穿透只服务「平替尽调」，不在核心监控链路上。
+  # ─────────────────────────────────────────────────────────────────────
+  holdings:
+    name: 持仓接口专项复测
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 变量拆解复测
+        run: bash scripts/probe-holdings.sh
 
   # ─────────────────────────────────────────────────────────────────────
   # ② 回写能力：runner 把结果 commit 回仓库
