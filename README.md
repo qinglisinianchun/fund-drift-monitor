@@ -1,85 +1,99 @@
-# fund-drift-monitor
+# fund-drift-monitor ｜ 纳指平替漂移监控
 
-纳指平替漂移监控 —— GitHub Actions 托管版。
+盯住 **080006 长盛环球行业混合(QDII)A** 还是不是 **270042 广发纳斯达克100ETF联接(QDII)A** 的合格平替。
 
-## 当前阶段：可行性探测 —— 已通过 ✅
+270042 因限购、额度稀缺，一直用 080006 顶替。但 080006 是**主动混合基金**，基金经理有权换仓；一旦大举买入非纳指标的表现，两者走势就会脱钩，而你还以为自己拿着纳指100。这个仓库每天自动比对两只基金的净值偏差，脱钩就推微信。
 
-监控代码还没搬上来。这里先验证一个前提问题：
+**看板（公开链接）：<https://qinglisinianchun.github.io/fund-drift-monitor/>**
 
-> **本机能访问的接口，GitHub Actions 的 runner 能不能访问？**
+## 它是怎么判断的
 
-本机在河北、走 VPN；runner 在弗吉尼亚 Azure 机房。这条链路不通，后面所有设计都是白搭。
+不猜持仓，只看**净值走势**。对齐期（2026-07-01 起）两基金相关性 0.997~0.9996，所以任何偏离都有意义。
 
-**结论：完全可行。** 详见 [`探测结论.md`](探测结论.md)。
+四个滚动窗口的偏差，阈值按对齐期标准差 ≈3σ 校准，且要求**连续 2 天确认**才报警（滤掉单日噪声）：
 
-| 接口 | 结果 |
-|---|---|
-| 东财净值 `api.fund.eastmoney.com/f10/lsjz` | ✅ 抽样 6/6 成功 |
-| 东财持仓 `fundf10.eastmoney.com/FundArchivesDatas.aspx` | ✅ 抽样 4/4 成功 |
-| 东财基金代码全表（http 明文） | ✅ 3.18 MB / 28000 个代码 |
-| 东财费率页 | ✅ 40.5 KB |
-| 微信 Server酱 推送通道 | ✅ 发送接口返回正常业务响应 |
-| runner 回写仓库（`git push`） | ✅ 成功 |
+| 窗口 | 阈值 | 连续确认 | 红灯线 | 对齐期 std |
+|---|---|---|---|---|
+| 3 日 | ±1.00% | 2 天 | ±2.0% | 0.2005% |
+| 5 日 | ±1.20% | 2 天 | ±2.2% | 0.2589% |
+| 7 日 | ±1.40% | 2 天 | ±2.5% | 0.3278% |
+| 10 日 | ±1.60% | 2 天 | ±3.0% | 0.4074% |
 
-云端抓到的净值（`080006` 1.4156 / 2026-09-29）比本机最后记录新了 **3 个交易日**。
+- **黄灯**：连续 2 天超阈值 → 推微信，提示留意
+- **红灯**：单次突破红灯线 → 立即推微信，建议查持仓公告
 
-## 探测任务
+校准区间特意从 2026-07-01 起。2026-06 相关系数只有 0.924（std 0.836%），属「尚未对齐期」，拿它校准会把阈值放得太宽。
 
-| 任务 | 脚本 | 干什么 |
+## 目录结构
+
+```
+monitor.py        巡检：拉净值 → 合并缓存 → 算偏差 → 出 数据/latest.json
+notify.py         推送：alert 模式（有触发才推）/ weekly 模式（每周汇总）
+生成看板.py        把 数据/latest.json 渲染成单文件 index.html
+run.py            本地一键跑三步（Windows 好用）
+run.sh            同上，Linux / 云电脑入口
+weekly.sh         每周周报入口
+crontab.txt       云电脑 cron 模板（用 GitHub Actions 就不需要它）
+index.html        看板（GitHub Pages 首页）
+数据/             净值缓存 + 巡检状态（由 Actions 自动提交回来）
+probe/            当初「GitHub 上跑不跑得通」的实测留档，不参与日常运行
+```
+
+## 自动运行
+
+两个 workflow 都跑在 **GitHub 的服务器上**，跟你自己的电脑开不开机无关：
+
+| workflow | 时间（北京时间） | 干什么 |
 |---|---|---|
-| 探测外部接口可达性 | `scripts/probe-net.sh` | 逐项打所有接口，验 HTTP 状态 + 耗时 + 内容真伪 |
-| 持仓接口专项复测 | `scripts/probe-holdings.sh` | 把 Referer / 参数 / HTTP 版本逐个拆开对比 |
-| 接口可靠性抽样 | `scripts/probe-reliability.sh` | 重复打同一接口，算成功率 |
-| 验证 runner 能否把数据写回仓库 | （工作流内联） | 证明回写通道可用 |
+| `每日巡检` | 每天 **03:07、07:07** | 巡检 → 有触发就推微信 → 刷看板 → 提交数据 |
+| `每周周报` | 周日 **09:07** | 巡检 → 无论是否漂移都推一份周报 → 刷看板 → 提交数据 |
 
-## 怎么跑
+一天跑两次是刻意的：GitHub 官方说明定时任务在负载高峰**可能延迟、甚至偶发不执行**，两次互为兜底。时间都用 `:07` 而不是 `:00`，也是为了避开整点高峰。
 
-```bash
-# 方式一：手动触发
-gh workflow run probe-net.yml
+每次跑完都会把 `数据/` **提交回仓库**。这一步是关键 —— `last_run.txt` 和净值缓存留在仓库里，下次运行才知道「上次跑到哪」，落下的交易日会被自动补上（补跑情况会标在推送正文里）。也因此，仓库只要有定时提交，就不存在「60 天不活动」的问题。
 
-# 方式二：改脚本推上去，自动触发
-PUSH_COMMIT_MSG="test(probe): ..." bash scripts/push-to-github.sh qinglisinianchun fund-drift-monitor --rebase
-```
+想立刻跑一次：仓库 → **Actions** → 选 `每日巡检` → **Run workflow**。
 
-> **这个仓库固定加 `--rebase`。** 里面有云端任务会往回写数据，远端天天有新提交；
-> 不加的话脚本会停下来问，加了就自动安全叠加（本地未提交的改动会暂存再还原，不会丢）。
+## 密钥怎么放
 
-## 四个坑（详见探测结论）
+`数据/notify_config.json` **会进公开仓库，所以里面密钥一律留空**。真值放
+**Settings → Secrets and variables → Actions**：
 
-1. **持仓接口必须带 Referer** —— 不带直接 404；`type=jjcc` 必须小写。
-2. **基金代码表是 http 明文会 301 跳转** —— curl 不加 `-L` 会拿到 0 字节，看起来像被拦。
-3. **接口会偶发超时** —— 实测同一 URL 出现过「第 1 次成功、后面 5 次全超时」，
-   换个时间重跑又 100% 成功。**不是封禁，是抖动，重试机制必须保留。**
-4. **Windows 的 CRLF 会把 Linux 上的脚本跑挂** —— 本机 `core.autocrlf=true`，
-   用 API 直推读工作区原始字节会绕过 git 的规范化，CRLF 进仓库后 runner 上 bash 报
-   `syntax error: unexpected end of file`。本项目已用 `.gitattributes`（`* text=auto eol=lf`）
-   + `push-via-api.py` 走 `git hash-object` 双重保险。
-   诊断用 `git ls-files --eol`，**别用 grep 数 `\r`**。
+| Secret 名 | 说明 |
+|---|---|
+| `SERVERCHAN_KEY` | Server酱 key，从 sct.ftqq.com 拿 |
+| `WECOM_WEBHOOK_URL` | 企业微信群机器人 webhook（换通道才用） |
+| `PUSHPLUS_TOKEN` | PushPlus token（换通道才用） |
 
-## 目录
+`notify.py` 的 `load_cfg()` 把环境变量**叠加**到 JSON 配置上（不是替换），所以本地把密钥写进 JSON 照样能跑，云端只认 Secrets。
 
-```
-探测结论.md                        完整实测结论（含环境、数据、对策）
-.github/workflows/probe-net.yml    探测工作流（4 个任务）
-scripts/probe-net.sh               逐项接口探测 + 内容验真
-scripts/probe-holdings.sh          持仓接口变量拆解
-scripts/probe-reliability.sh       成功率抽样
-scripts/push-to-github.sh          推送脚本（自动识别 VPN 代理，支持 --rebase）
-scripts/push-via-api.py            兜底：github.com 被挡、但 api.github.com 能通时直推
-```
+`每日巡检` 里还有一道**泄露自检**：一旦在代码里扫到形如 `SCT` + 长串字母数字的明文 key，直接让这次运行失败，防止手滑把密钥提交上去。
 
-## 推不上去的时候
-
-代理白名单会变。实测出现过 `api.github.com` 返回 200、而 `github.com`
-报 `CONNECT tunnel failed, response 502` 的情况 —— 这时 `git push` 必然失败。
-
-用 API 直推兜底：
+## 本地跑
 
 ```bash
-python scripts/push-via-api.py qinglisinianchun fund-drift-monitor main "提交信息"
-python scripts/push-via-api.py qinglisinianchun fund-drift-monitor main "提交信息" --all
+python run.py        # Windows：巡检 → 推送 → 刷看板
+bash run.sh          # Linux/macOS 日常巡检
+bash weekly.sh       # 周报
 ```
 
-`--all` = 把本地所有 git 跟踪的文件整份同步上去（本地有若干提交没推上去时用）。
+本地要推微信，把密钥写进 `数据/notify_config.json`，或临时 `export SERVERCHAN_KEY=xxx`。
 
+## probe/ —— 为什么敢放 GitHub 上跑
+
+搬过来之前做过一轮完整实测（见 [`probe/探测结论.md`](probe/探测结论.md)）：从 GitHub 的 Linux runner 上真实打了 6 轮、上百次请求，验证东方财富的接口在境外机房能不能通、稳不稳、写回仓库可不可行。
+
+结论**完全可行**，顺带记下四个坑：
+
+| 坑 | 现象 | 解法 |
+|---|---|---|
+| 缺 `Referer` | 持仓接口直接 404 | 请求必须带对应页面的 Referer |
+| 大写 `type=JJCC` | 返回 12 字节空内容 | 必须小写 `type=jjcc` |
+| 净值接口偶发超时 | 同参数时通时断 | 只是抖动，不是封禁；3 次重试即可 |
+| CRLF | Linux 上 bash 报 `$'\r': command not found` | `.gitattributes` 强制 `eol=lf` |
+
+细节和复现步骤都在 `probe/` 里。
+
+---
+
+监控对象是 QDII 基金，净值 T+1、T+2 才更新，加上美股与 A 股假期错位，**最新净值日通常比当天早 1~3 天**，属正常现象。

@@ -1,0 +1,10 @@
+{
+  "_说明": "微信推送通道配置。channel 可选：wecom_webhook / serverchan / pushplus / none",
+  "_密钥说明": "本文件会进公开仓库，所以密钥一律留空；真值放 GitHub Actions Secrets，脚本从环境变量读取（SERVERCHAN_KEY / WECOM_WEBHOOK_URL / PUSHPLUS_TOKEN / NOTIFY_CHANNEL）。本地临时跑可 export SERVERCHAN_KEY=xxx 覆盖。",
+  "channel": "serverchan",
+  "wecom_webhook_url": "",
+  "serverchan_key": "",
+  "pushplus_token": "",
+  "mention_all": true,
+  "at_mobiles": []
+}

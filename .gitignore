@@ -1,10 +1,20 @@
-# 运行产物（不进版本库）
-数据/
-日志/
+# ---- Python 运行产物 ----
 __pycache__/
 *.pyc
 
-# 本地凭证，绝不入库
+# ---- 运行日志 ----
+# 每天一份 Markdown，Actions 的运行日志里已经能看到，不进库以免仓库膨胀
+日志/
+
+# ---- 瞬时状态 ----
+# 只在「触发漂移」时由 monitor.py 生成，触发解除后自动删除，不必入库
+数据/trigger.json
+
+# ---- 本地凭证，绝不入库 ----
 local-env.sh
 .env
 *_key.txt
+
+# 注意：数据/ 下的 nav_*.json / latest.json / last_run.txt / notify_config.json
+# 必须入库 —— 巡检结果是靠「数据 commit 回仓库」来保证补跑连续性的。
+# notify_config.json 里只允许放空密钥，真值走 Actions Secrets。

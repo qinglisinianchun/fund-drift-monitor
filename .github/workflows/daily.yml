@@ -1,0 +1,115 @@
+name: 每日巡检
+
+# 一天跑两次，都是为了防「GitHub 定时任务延迟或偶发不执行」：
+#   第一次  UTC 19:07 = 北京时间 次日 03:07   ← 主跑，对应原来云电脑的凌晨
+#   第二次  UTC 23:07 = 北京时间 次日 07:07   ← 兜底补跑
+# 为什么用 :07 而不是 :00：
+#   GitHub 官方说明定时任务在整点负载高峰"可能延迟甚至被丢弃"，错开整点更稳。
+# 为什么要 commit 回仓库：
+#   巡检结果落在 数据/ 里，只有提交回仓库，下一次运行才拿得到上次的
+#   last_run.txt 与净值缓存，补跑链条才不会断。
+on:
+  schedule:
+    - cron: '7 19 * * *'
+    - cron: '7 23 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# 同一时间只允许一个实例（与 weekly.yml 共用同一 group），
+# 避免两个流程同时改 数据/ 打架
+concurrency:
+  group: fund-monitor
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    env:
+      # 让 Python 的 datetime.now() 走北京时间（runner 默认是 UTC）
+      TZ: Asia/Shanghai
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 环境自检
+        run: |
+          python3 -V
+          echo "runner 本地时间: $(date '+%F %T %Z')"
+          echo "北京时间:      $(TZ=Asia/Shanghai date '+%F %T')"
+
+      - name: 泄露自检（禁止明文密钥进库）
+        run: |
+          # Server酱 key 形如 SCT + 20 位以上字母数字；这行只是兜底，
+          # 真正的密钥应该只存在于 Actions Secrets 里。
+          if grep -rInE 'SCT[0-9A-Za-z]{15,}' --exclude-dir=.git . ; then
+            echo "::error::仓库里出现疑似明文 Server酱密钥，已中止。请把它改到 Actions Secrets。"
+            exit 1
+          fi
+          echo "✅ 未发现明文密钥"
+
+      - name: 1/3 巡检 monitor.py
+        id: monitor
+        run: |
+          set +e
+          python3 monitor.py
+          rc=$?
+          set -e
+          echo "monitor 退出码 = $rc （0=正常 1=触发预警 2=执行失败）"
+          if [ "$rc" -ge 2 ]; then
+            echo "::error::巡检执行失败，请看上面的报错"
+            exit 1
+          fi
+
+      - name: 2/3 微信推送 notify.py
+        if: always()
+        env:
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        run: python3 notify.py
+
+      - name: 3/3 刷新看板
+        if: always()
+        run: python3 "生成看板.py"
+
+      - name: 数据提交回仓库
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- 数据 index.html
+          if git diff --cached --quiet; then
+            echo "本次无数据变化，跳过提交"
+          else
+            git commit -m "chore(data): 巡检数据 $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M')"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME:-main}" || true
+            git push
+            echo "✅ 数据已提交回仓库"
+          fi
+
+      - name: 结果摘要
+        if: always()
+        run: |
+          echo "=== 数据/latest.json 摘要 ==="
+          python3 - <<'PY'
+          import json, os
+          p = '数据/latest.json'
+          if os.path.exists(p):
+              d = json.load(open(p, encoding='utf-8'))
+              print('巡检日期   :', d.get('date'))
+              print('是否成功   :', d.get('ok'))
+              print('数据区间   :', d.get('range'))
+              print('最新净值日 :', (d.get('latest') or {}).get('A', {}).get('d'))
+              print('补跑交易日 :', d.get('backfill'))
+              for w in d.get('windows') or []:
+                  print(f"  {w['window']:>2}日偏差 {w['current_dev']:+.3f}% "
+                        f"(阈值±{w['threshold']}%, 连续{w['hit_run']}/{w['need_days']}) "
+                        f"{'🔴触发' if w['triggered'] else '✅正常'}")
+              for a in d.get('alerts') or []:
+                  print('  🚨', a)
+          else:
+              print('（没有 latest.json，说明 monitor.py 没跑到写文件那步）')
+          PY
