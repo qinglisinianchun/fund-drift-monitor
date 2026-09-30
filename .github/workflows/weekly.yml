@@ -27,6 +27,20 @@ jobs:
       - name: 检出仓库
         uses: actions/checkout@v4
 
+      - name: 泄露自检（禁止明文密钥进库）
+        run: |
+          # 与 daily.yml 同一道兜底检查；probe/ 里的假 key 已排除。
+          hits=$(grep -rInE 'SCT[0-9A-Za-z]{15,}' \
+                   --exclude-dir=.git --exclude-dir=probe \
+                   --exclude-dir=日志 --exclude-dir=__pycache__ . \
+                 | grep -viE 'fake|example|sample|placeholder|dummy|000000' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::仓库里出现疑似明文 Server酱密钥，已中止。请把它改到 Actions Secrets。"
+            exit 1
+          fi
+          echo "✅ 未发现明文密钥"
+
       - name: 1/3 先刷新数据（周末补跑兜底）
         run: |
           set +e

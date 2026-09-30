@@ -42,9 +42,19 @@ jobs:
 
       - name: 泄露自检（禁止明文密钥进库）
         run: |
-          # Server酱 key 形如 SCT + 20 位以上字母数字；这行只是兜底，
+          # Server酱 key 形如 SCT + 20 位以上字母数字。这步是兜底，
           # 真正的密钥应该只存在于 Actions Secrets 里。
-          if grep -rInE 'SCT[0-9A-Za-z]{15,}' --exclude-dir=.git . ; then
+          #
+          # 排除 probe/：那是归档的实测材料，里面 probe-net.sh 故意写了一个
+          # 假 key（SCT000000thisIsAFakeKeyForProbe）用来验证发送接口连通性，
+          # 不是真密钥 —— 不排除的话每次都会误报中止。
+          # 另外再排除一眼假的占位串（fake / example / 000000 之类）。
+          hits=$(grep -rInE 'SCT[0-9A-Za-z]{15,}' \
+                   --exclude-dir=.git --exclude-dir=probe \
+                   --exclude-dir=日志 --exclude-dir=__pycache__ . \
+                 | grep -viE 'fake|example|sample|placeholder|dummy|000000' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
             echo "::error::仓库里出现疑似明文 Server酱密钥，已中止。请把它改到 Actions Secrets。"
             exit 1
           fi
