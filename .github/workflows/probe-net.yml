@@ -1,0 +1,29 @@
+name: 网络可达性探测
+
+# 目的：验证 GitHub Actions 的 runner 能否访问「纳指平替漂移监控」所需的
+#       全部外部接口（东方财富净值/持仓/费率、微信 Server酱）。
+#       本机能访问 ≠ runner 能访问，这一关过了才谈得上把监控搬上来。
+#
+# 只探测，无副作用：不带 Server酱 key，不会真的发出微信推送。
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/probe-net.yml'
+      - 'scripts/probe-net.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: 探测外部接口可达性
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 逐项探测
+        run: bash scripts/probe-net.sh

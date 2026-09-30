@@ -1,0 +1,10 @@
+# 运行产物（不进版本库）
+数据/
+日志/
+__pycache__/
+*.pyc
+
+# 本地凭证，绝不入库
+local-env.sh
+.env
+*_key.txt
