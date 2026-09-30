@@ -1,10 +1,12 @@
 name: 网络可达性探测
 
-# 目的：验证 GitHub Actions 的 runner 能否访问「纳指平替漂移监控」所需的
-#       全部外部接口（东方财富净值/持仓/费率、微信 Server酱）。
-#       本机能访问 ≠ runner 能访问，这一关过了才谈得上把监控搬上来。
+# 目的：验证 GitHub Actions 的 runner 能否支撑「纳指平替漂移监控」搬上云端。
+#       两件事都要成立，缺一不可：
+#         ① 出网 —— 能抓到东方财富的净值/持仓/费率，能推微信 Server酱
+#         ② 回写 —— 能把跑出来的数据 commit 回仓库（runner 是一次性的，
+#                   不写回来，下次运行就没有历史可合并）
 #
-# 只探测，无副作用：不带 Server酱 key，不会真的发出微信推送。
+# 只探测，无副作用：Server酱 那项故意用假 key，不会真的发出微信推送。
 
 on:
   workflow_dispatch:
@@ -17,13 +19,42 @@ permissions:
   contents: read
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # ① 出网能力
+  # ─────────────────────────────────────────────────────────────────────
   probe:
     name: 探测外部接口可达性
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
 
       - name: 逐项探测
         run: bash scripts/probe-net.sh
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ② 回写能力：runner 把结果 commit 回仓库
+  #    这一项不验证，整个「云端跑 + 看板自动更新」的方案就不成立
+  # ─────────────────────────────────────────────────────────────────────
+  writeback:
+    name: 验证 runner 能否把数据写回仓库
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 写一个探针文件并推送
+        run: |
+          echo "探测时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" > probe-stamp.txt
+          echo "runner  : $RUNNER_NAME ($RUNNER_OS)"
+          cat probe-stamp.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add probe-stamp.txt
+          git commit -m "chore(probe): 回写探针时间戳" || echo "无改动"
+          git push
+          echo "✅ 回写成功"
