@@ -24,19 +24,42 @@
 
 校准区间特意从 2026-07-01 起。2026-06 相关系数只有 0.924（std 0.836%），属「尚未对齐期」，拿它校准会把阈值放得太宽。
 
+## 想改东西从哪读起
+
+| 你想知道 | 读哪 |
+|---|---|
+| **怎么运维、怎么改、怎么排障** | [`部署到GitHub说明.md`](部署到GitHub说明.md) ← **主入口，先看这个** |
+| 为什么监控它、阈值怎么定的 | [`说明.md`](说明.md) |
+| 为什么敢放 GitHub 上跑 | [`probe/探测结论.md`](probe/探测结论.md) |
+| 仓库运维工具怎么用 | [`tools/README.md`](tools/README.md) |
+
 ## 目录结构
 
 ```
+【每天自动跑的】
 monitor.py        巡检：拉净值 → 合并缓存 → 算偏差 → 出 数据/latest.json
 notify.py         推送：alert 模式（有触发才推）/ weekly 模式（每周汇总）
 生成看板.py        把 数据/latest.json 渲染成单文件 index.html
 run.py            本地一键跑三步（Windows 好用）
-run.sh            同上，Linux / 云电脑入口
+run.sh            同上，Linux 入口（Actions 用的就是它）
 weekly.sh         每周周报入口
-crontab.txt       云电脑 cron 模板（用 GitHub Actions 就不需要它）
-index.html        看板（GitHub Pages 首页）
-数据/             净值缓存 + 巡检状态（由 Actions 自动提交回来）
-probe/            当初「GitHub 上跑不跑得通」的实测留档，不参与日常运行
+crontab.txt       云电脑 cron 模板（现用 Actions，备而不用）
+index.html        看板（GitHub Pages 首页，脚本生成，别手改）
+
+【数据 —— 由 Actions 自动提交回来，是补跑连续性的依据】
+数据/             净值缓存 + 巡检状态 + notify_config.json（密钥留空）
+数据/last_run.txt 上次运行日，别删
+
+【文档】
+部署到GitHub说明.md   运维入口
+说明.md              策略与阈值详解
+docs/                云电脑部署说明（历史方案，已被 Actions 取代）
+
+【工具与脚本 —— 本地用，不参与日常运行】
+tools/            仓库运维（看状态/写 secret/触发 workflow/抓日志/改写历史后强推）
+分析/             平替尽调、持仓穿透、费率抓取 + 尽调结论
+测试/             推送通道测试、看板交互测试
+probe/            当初「GitHub 上跑不跑得通」的实测留档
 ```
 
 ## 自动运行
