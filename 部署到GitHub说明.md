@@ -1,6 +1,6 @@
 # 部署到 GitHub 说明 · 纳指平替漂移监控
 
-> 最后更新：2026-10-01
+> 最后更新：2026-10-06
 >
 > **本文件是这个项目的运维入口。** 换电脑、换人接手、或者隔半年回来看，从这一份读起就够。
 > 项目策略与阈值原理见 [`说明.md`](说明.md)，仓库总览见 [`README.md`](README.md)。
@@ -19,7 +19,7 @@
 | 仓库 | <https://github.com/qinglisinianchun/fund-drift-monitor> |
 | 可见性 | **公开** |
 | 看板 | <https://qinglisinianchun.github.io/fund-drift-monitor/> |
-| 每日巡检 | 北京时间每天 **03:07、07:07**（UTC 19:07、23:07） |
+| 每日巡检 | 北京时间每天 **05:07、07:07**（UTC 21:07、23:07） |
 | 每周周报 | 北京时间 **周日 09:07**（UTC 周日 01:07） |
 | 推送 | Server酱 → 微信，key 在 **Actions Secrets → `SERVERCHAN_KEY`** |
 | 运行依赖 | Python 3 标准库，**零第三方包** |
@@ -154,7 +154,7 @@ bash run.sh            # Linux / macOS
 ### ② 一天跑两次 + 把数据提交回仓库
 GitHub 官方说明定时任务在负载高峰**可能延迟、甚至偶发不执行**。两条对策：
 
-- **跑两次**（03:07 / 07:07）互为兜底；
+- **跑两次**（05:07 / 07:07）互为兜底；
 - **每次跑完把 `数据/` 和 `index.html` 提交回仓库**。
 
 第二条是关键。`last_run.txt` 和净值缓存留在仓库里，下次运行才知道「上次跑到哪」，
@@ -162,6 +162,15 @@ GitHub 官方说明定时任务在负载高峰**可能延迟、甚至偶发不�
 顺带还解决了另一个问题：仓库天天有提交，**永远不会触发「60 天不活动」被冻结**。
 
 时间都用 `:07` 而不是 `:00`，也是为了避开整点高峰。
+
+> **2026-10-06 把主跑从 UTC 19:07 挪到 21:07。**
+> 19:07（北京 03:07）正好压在美东下午盘尾（EDT 15:07），是 GitHub hosted runner
+> 的排队高峰，收到过「每日巡检被取消」的邮件。查下来 run 的 `conclusion` 是
+> `failure`、但里面那个 job 全程 `cancelled` 且 `steps` 为空 —— 官方 annotation
+> 的原话是 *The job was not acquired by Runner of type hosted even after multiple
+> attempts*，即**排队超时被丢弃**，不是代码问题。挪到 21:07 = 美东 17:07 躲开高峰。
+> 判断这类问题只看三层：`runs`（结论）→ `jobs`（job 级状态 + steps）→
+> `annotations`（官方原因原话），**别只看第一层**。
 
 ### ③ 看板从 `看板.html` 改名为 `index.html`
 GitHub Pages 的站点首页必须是 `index.html`，所以改了 `生成看板.py` 的输出名。
@@ -187,6 +196,11 @@ GitHub Pages 的站点首页必须是 `index.html`，所以改了 `生成看板.
   **不要重新启用** —— 会和云端双跑、重复推微信，还会把 `last_run.txt` 写乱。
 - **本机 staging 仓库与远端曾出现谱系分叉**（内容 tree 一致、提交 SHA 不同，
   因为 GitHub 会把作者日期归一化成 UTC）。本机副本已删，此问题随之消失。
+- **两个活跃 workflow 已升到 `actions/checkout@v5`**（2026-10-06）。
+  原来 `@v4` 声明的是 Node.js 20 运行时，而 GitHub 早已把 Node 20 退役、强制换到
+  Node.js 24，于是每次运行都会刷一条弃用警告。功能上零影响，升级只是消噪。
+  `probe/probe-net.yml.archived` 里还留着 `@v4` —— 它是归档的历史留档、不在
+  `.github/workflows/` 下所以不会被执行，**故意不动**，免得篡改留档原貌。
 
 ---
 
