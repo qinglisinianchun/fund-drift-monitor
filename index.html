@@ -89,7 +89,7 @@ color-scheme:light dark;
 body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
 background:var(--bg-page);color:var(--txt);padding:22px;line-height:1.6}
 .wrap{max-width:1080px;margin:0 auto}
-h1{font-size:21px;font-weight:600;margin-bottom:4px}
+h1{font-size:21px;font-weight:600;margin-bottom:18px}
 .sub{color:var(--txt-3);font-size:13px;margin-bottom:18px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
 .card{background:var(--bg-card);border-radius:10px;padding:14px 16px;border:1px solid var(--line)}
@@ -139,7 +139,6 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}
 <body><div id="tip" class="tipbox"></div>
 <div class="wrap">
 <h1>基金漂移监控看板 <span class="badge g">正常</span></h1>
-<div class="sub">巡检时间 2026-10-09 22:40:08 · 数据区间 2026-07-01 ~ 2026-10-08（66个交易日） · 推送通道：Server酱</div>
 
 <div class="grid">
   <div class="card"><div class="k">080006 长盛环球行业混合A</div>
@@ -158,7 +157,7 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}
     <div class="d">偏差 +0.263%</div></div>
 </div>
 
-<div class="tips">ℹ️ 无新增交易日（净值尚未更新）</div>
+
 
 <div class="panel">
   <h2>
@@ -209,7 +208,7 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}
 </div>
 
 <div class="sub" style="text-align:center;margin-top:8px">
-  生成于 2026-10-09 22:41:32 · 数据仅供参考，不构成投资建议
+  生成于 2026-10-09 22:59:07 · 数据仅供参考，不构成投资建议
 </div>
 </div>
 
@@ -467,10 +466,30 @@ renderNav();
 renderDev();
 bindNavHover();
 
-// 系统深浅色切换时重绘（线条颜色取自 CSS 变量，不重绘会留在旧配色）
+// ---------- 系统深浅色变化时重绘 ----------
+// 页面底色/文字是纯 CSS，浏览器自己会跟着变；但**图表颜色是画上去的 SVG 属性**，
+// 必须重绘才会更新，所以要主动对齐一次。
+//
+// 正常情况浏览器会发 media query 的 change 事件。但有些环境不发：
+//   · iOS Safari 从后台切回前台时
+//   · 微信 / QQ 等 App 内置 WebView（跟随的是宿主 App 的外观，不是浏览器）
+// 只靠 change 的话，可能出现「底色变了、线条还是旧色」甚至整页不更新，
+// 所以页面重新可见 / 获得焦点时再兜底对一次。
 const MQ = window.matchMedia('(prefers-color-scheme: dark)');
-const onScheme = () => { renderNav(); renderDev(); };
-if (MQ.addEventListener) MQ.addEventListener('change', onScheme);
-else if (MQ.addListener) MQ.addListener(onScheme);
+
+function resyncTheme() {
+  const fresh = theme();
+  if (fresh.a === T.a && fresh.grid === T.grid) return;   // 配色没变，不必重画
+  renderNav();
+  renderDev();
+}
+
+if (MQ.addEventListener) MQ.addEventListener('change', resyncTheme);
+else if (MQ.addListener) MQ.addListener(resyncTheme);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) resyncTheme();
+});
+window.addEventListener('focus', resyncTheme);
+window.addEventListener('pageshow', resyncTheme);
 </script>
 </body></html>
