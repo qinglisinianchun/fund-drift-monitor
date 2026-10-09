@@ -35,8 +35,8 @@ status_cls = {'ok': 'g', 'alert': 'r', 'fail': 'y'}[status]
 wrows = ''.join(
     f"<tr><td>{w['window']} 日</td><td>±{w['threshold']}%</td>"
     f"<td class=\"{'neg' if w['current_dev'] < 0 else 'pos'}\">{w['current_dev']:+.3f}%</td>"
-    f"<td>{w['hit_run']} / {w['need_days']}</td>"
-    f"<td class=\"{'bad' if w['triggered'] else 'good'}\">{'🔴 触发' if w['triggered'] else '✅ 正常'}</td></tr>"
+    f"<td class=\"nw\">{w['hit_run']} / {w['need_days']}</td>"
+    f"<td class=\"{'bad' if w['triggered'] else 'good'} nw\">{'🔴 触发' if w['triggered'] else '✅ 正常'}</td></tr>"
     for w in rep['windows'])
 
 # 补跑信息块
@@ -203,6 +203,9 @@ gap:10px;flex-wrap:wrap;justify-content:space-between}}
 table{{width:100%;border-collapse:collapse;font-size:14px}}
 th,td{{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line-soft)}}
 th{{color:var(--txt-3);font-weight:500;font-size:12.5px;background:var(--bg-subtle)}}
+/* 短内容不折行：面板③的「10 日」「✅ 正常」、面板④的「被监控」这类标签。
+   面板④的末列是长文本，所以**只对首列和显式 .nw 生效**，不能整表 nowrap。 */
+td:first-child, .nw{{white-space:nowrap}}
 .good{{color:var(--down);font-weight:600}} .bad{{color:var(--up);font-weight:600}}
 .pos{{color:var(--up)}} .neg{{color:var(--down)}}
 .chart{{width:100%;height:auto;display:block}}
@@ -230,6 +233,23 @@ box-shadow:var(--tip-shadow)}}
 .tipbox .rr span{{margin-left:auto;padding-left:16px;font-weight:600}}
 .tipbox .dd{{color:var(--tip-dim);border-top:1px solid var(--tip-div);margin-top:5px;padding-top:4px;
 display:flex;justify-content:space-between;gap:18px;font-size:11.5px}}
+
+/* ---------- 窄屏（手机）微调 ----------
+   实测 390px 下：面板①②的长标题各折 2 行（标题本身 308px，正好顶满容器），
+   面板③的「10 日」「✅ 正常」折成 2 行；360px 下「3 日」「0 / 2」也开始折。
+   解法是**收窄留白 + 字号随视口微缩**，而不是给标题硬加 nowrap ——
+   硬 nowrap 只会让长标题溢出面板。 */
+@media (max-width: 640px) {{
+body{{padding:12px}}
+.panel{{padding:14px}}
+.panel h2{{font-size:clamp(12px, 3.5vw, 15px)}}
+th,td{{padding:7px 6px;font-size:12.5px}}
+}}
+/* 320px 一级的老机型再挤一挤，保证长标题仍然一行放得下 */
+@media (max-width: 359px) {{
+body{{padding:10px}}
+.panel{{padding:12px}}
+}}
 </style>
 </head>
 <body><div id="tip" class="tipbox"></div>
