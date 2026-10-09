@@ -3,7 +3,8 @@
 生成监控看板 —— 自包含单文件 HTML，零外链
 读取 数据/latest.json，输出 index.html
 （文件名用 index.html 是为了 GitHub Pages：仓库根目录的 index.html 即站点首页）
-支持时间范围切换：1个月 / 3个月 / 6个月 / 1年
+支持时间范围切换：1个月 / 3个月 / 6个月 / 1年（图①②各自独立切换）
+跟随系统深浅色：设备切到夜间模式时自动套用深色配色（Apple HIG 深色系统色）
 """
 import json, os, datetime
 
@@ -88,11 +89,9 @@ payload = json.dumps({
     'nValid': n_valid,
 }, ensure_ascii=False)
 
-# 有效区间说明：讲清「为什么点近半年 / 近一年，也只从 2026-07-01 起」
-acc_days = n_valid
-acc_txt = (f'有效区间自 <b>{dates[0]}</b> 起，共 <b>{acc_days}</b> 个交易日。'
-           f'两基金在 {VALID_FROM} 之前不具可比性，'
-           f'因此「近半年」「近1年」也一律以该日为起点。')
+# 有效区间说明
+acc_txt = (f'有效区间自 <b>{dates[0]}</b> 起，'
+           f'两基金在 {VALID_FROM} 之前不具可比性。')
 
 html = f'''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -102,50 +101,130 @@ html = f'''<!DOCTYPE html>
 <title>基金漂移监控看板</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
+
+/* ---------- 配色（浅色，与改动前一致） ---------- */
+:root{{
+color-scheme:light dark;
+--bg-page:#f5f6f8;
+--bg-card:#ffffff;
+--bg-subtle:#fafbfc;
+--bg-seg:#f0f1f3;
+--bg-seg-on:#ffffff;
+--bg-tips:#f8f9fb;
+--bg-tips-warn:#fff8ec;
+--line:#e8eaed;
+--line-soft:#f0f1f3;
+--line-tips:#d0d4d9;
+--line-tips-warn:#e8a33d;
+--txt:#1f2329;
+--txt-2:#5a6169;
+--txt-3:#8a9099;
+--txt-4:#a0a6ae;
+--up:#c1342f;
+--down:#0b7a37;
+--warn-txt:#8a6210;
+--badge-g-bg:#e7f6ec; --badge-g-fg:#0b7a37;
+--badge-r-bg:#fdeaea; --badge-r-fg:#c1342f;
+--badge-y-bg:#fff4e0; --badge-y-fg:#a86a00;
+--c-a:#3b6fd4; --c-b:#e8912f; --c-dev:#2baac1;
+--grid:#eef0f2; --grid-strong:#e2e5e9;
+--axis:#a0a6ae; --zero:#c9ccd2; --zero2:#d8dbe0;
+--seg-shadow:0 1px 3px rgba(0,0,0,.08);
+--tip-bg:rgba(29,33,40,.94); --tip-fg:#ffffff;
+--tip-sub:#aeb6c2; --tip-dim:#c3c9d2; --tip-div:rgba(255,255,255,.16);
+--tip-shadow:0 6px 20px rgba(0,0,0,.28);
+}}
+
+/* ---------- 夜间模式 ----------
+   跟随系统：设备切到深色时自动生效（@media prefers-color-scheme）。
+   取色参考 Apple HIG 深色系统色：
+     systemBlue #0A84FF · systemOrange #FF9F0A · systemTeal #40C8E0
+     systemRed #FF453A · systemGreen #30D158 · systemYellow #FFD60A
+     systemGroupedBackground #000000 · secondarySystemGroupedBackground #1C1C1E
+     tertiarySystemGroupedBackground #2C2C2E · separator #38383A
+     label #FFFFFF · secondaryLabel rgba(235,235,245,.6) · quaternaryLabel rgba(235,235,245,.3)
+   说明：只改深色这一套；浅色沿用改动前的配色，避免影响你已经看惯的样子。 */
+@media (prefers-color-scheme: dark) {{
+:root{{
+--bg-page:#000000;
+--bg-card:#1c1c1e;
+--bg-subtle:#2c2c2e;
+--bg-seg:#2c2c2e;
+--bg-seg-on:#48484a;
+--bg-tips:#1c1c1e;
+--bg-tips-warn:#2a2314;
+--line:#38383a;
+--line-soft:#2c2c2e;
+--line-tips:#48484a;
+--line-tips-warn:#ff9f0a;
+--txt:#ffffff;
+--txt-2:rgba(235,235,245,.6);
+--txt-3:rgba(235,235,245,.42);
+--txt-4:rgba(235,235,245,.3);
+--up:#ff453a;
+--down:#30d158;
+--warn-txt:#ffd60a;
+--badge-g-bg:rgba(48,209,88,.18);  --badge-g-fg:#30d158;
+--badge-r-bg:rgba(255,69,58,.18);  --badge-r-fg:#ff453a;
+--badge-y-bg:rgba(255,214,10,.18); --badge-y-fg:#ffd60a;
+--c-a:#0a84ff; --c-b:#ff9f0a; --c-dev:#40c8e0;
+--grid:#2c2c2e; --grid-strong:#3a3a3c;
+--axis:rgba(235,235,245,.4); --zero:#48484a; --zero2:#3a3a3c;
+--seg-shadow:0 1px 3px rgba(0,0,0,.5);
+--tip-bg:rgba(44,44,46,.96); --tip-fg:#ffffff;
+--tip-sub:rgba(235,235,245,.6); --tip-dim:rgba(235,235,245,.45);
+--tip-div:rgba(235,235,245,.16);
+--tip-shadow:0 8px 26px rgba(0,0,0,.6);
+}}
+}}
+
 body{{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-background:#f5f6f8;color:#1f2329;padding:22px;line-height:1.6}}
+background:var(--bg-page);color:var(--txt);padding:22px;line-height:1.6}}
 .wrap{{max-width:1080px;margin:0 auto}}
 h1{{font-size:21px;font-weight:600;margin-bottom:4px}}
-.sub{{color:#8a9099;font-size:13px;margin-bottom:18px}}
+.sub{{color:var(--txt-3);font-size:13px;margin-bottom:18px}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}}
-.card{{background:#fff;border-radius:10px;padding:14px 16px;border:1px solid #e8eaed}}
-.card .k{{font-size:12px;color:#8a9099;margin-bottom:5px}}
+.card{{background:var(--bg-card);border-radius:10px;padding:14px 16px;border:1px solid var(--line)}}
+.card .k{{font-size:12px;color:var(--txt-3);margin-bottom:5px}}
 .card .v{{font-size:20px;font-weight:600;letter-spacing:-.3px}}
-.card .d{{font-size:12px;color:#8a9099;margin-top:3px}}
-.panel{{background:#fff;border-radius:10px;padding:18px;border:1px solid #e8eaed;margin-bottom:16px}}
+.card .d{{font-size:12px;color:var(--txt-3);margin-top:3px}}
+.panel{{background:var(--bg-card);border-radius:10px;padding:18px;border:1px solid var(--line);margin-bottom:16px}}
 .panel h2{{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;
 gap:10px;flex-wrap:wrap;justify-content:space-between}}
 .panel h2 span.ttl{{display:flex;align-items:center;gap:8px}}
 .badge{{font-size:12px;padding:2px 9px;border-radius:20px;font-weight:500}}
-.g{{background:#e7f6ec;color:#0b7a37}} .r{{background:#fdeaea;color:#c1342f}}
-.y{{background:#fff4e0;color:#a86a00}}
+.g{{background:var(--badge-g-bg);color:var(--badge-g-fg)}}
+.r{{background:var(--badge-r-bg);color:var(--badge-r-fg)}}
+.y{{background:var(--badge-y-bg);color:var(--badge-y-fg)}}
 table{{width:100%;border-collapse:collapse;font-size:14px}}
-th,td{{padding:9px 10px;text-align:left;border-bottom:1px solid #f0f1f3}}
-th{{color:#8a9099;font-weight:500;font-size:12.5px;background:#fafbfc}}
-.good{{color:#0b7a37;font-weight:600}} .bad{{color:#c1342f;font-weight:600}}
-.pos{{color:#c1342f}} .neg{{color:#0b7a37}}
+th,td{{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line-soft)}}
+th{{color:var(--txt-3);font-weight:500;font-size:12.5px;background:var(--bg-subtle)}}
+.good{{color:var(--down);font-weight:600}} .bad{{color:var(--up);font-weight:600}}
+.pos{{color:var(--up)}} .neg{{color:var(--down)}}
 .chart{{width:100%;height:auto;display:block}}
-.tips{{font-size:13px;color:#5a6169;background:#f8f9fb;border-left:3px solid #d0d4d9;
+.tips{{font-size:13px;color:var(--txt-2);background:var(--bg-tips);border-left:3px solid var(--line-tips);
 padding:11px 14px;border-radius:0 7px 7px 0;margin-top:10px}}
-.tips.warn{{background:#fff8ec;border-left-color:#e8a33d;color:#8a6210}}
-.tips b{{color:#1f2329}}
-.legend{{display:flex;gap:18px;font-size:12.5px;color:#5a6169;margin-top:10px;flex-wrap:wrap}}
+.tips.warn{{background:var(--bg-tips-warn);border-left-color:var(--line-tips-warn);color:var(--warn-txt)}}
+.tips b{{color:var(--txt)}}
+.legend{{display:flex;gap:18px;font-size:12.5px;color:var(--txt-2);margin-top:10px;flex-wrap:wrap}}
 .legend i{{display:inline-block;width:15px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}}
-.seg{{display:inline-flex;background:#f0f1f3;border-radius:8px;padding:3px;gap:2px}}
-.seg button{{border:0;background:transparent;font:inherit;font-size:12.5px;color:#5a6169;
+.muted{{color:var(--txt-4)}}
+.sw-a{{background:var(--c-a)}} .sw-b{{background:var(--c-b)}} .sw-dev{{background:var(--c-dev)}}
+.seg{{display:inline-flex;background:var(--bg-seg);border-radius:8px;padding:3px;gap:2px}}
+.seg button{{border:0;background:transparent;font:inherit;font-size:12.5px;color:var(--txt-2);
 padding:5px 13px;border-radius:6px;cursor:pointer;transition:.15s;white-space:nowrap}}
-.seg button:hover{{color:#1f2329}}
-.seg button.on{{background:#fff;color:#1f2329;font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}}
-.zoomhint{{font-size:12px;color:#a0a6ae;margin-top:8px}}
+.seg button:hover{{color:var(--txt)}}
+.seg button.on{{background:var(--bg-seg-on);color:var(--txt);font-weight:600;box-shadow:var(--seg-shadow)}}
+.zoomhint{{font-size:12px;color:var(--txt-4);margin-top:8px}}
 #chartNav{{cursor:crosshair}}
-.tipbox{{position:fixed;display:none;pointer-events:none;background:rgba(29,33,40,.94);color:#fff;
+.tipbox{{position:fixed;display:none;pointer-events:none;background:var(--tip-bg);color:var(--tip-fg);
 font-size:12px;padding:9px 11px;border-radius:8px;line-height:1.75;z-index:99;white-space:nowrap;
-box-shadow:0 6px 20px rgba(0,0,0,.28)}}
-.tipbox .td{{color:#aeb6c2;font-size:11px;margin-bottom:4px}}
+box-shadow:var(--tip-shadow)}}
+.tipbox .td{{color:var(--tip-sub);font-size:11px;margin-bottom:4px}}
 .tipbox .rr{{display:flex;align-items:center;gap:7px}}
 .tipbox .rr i{{display:inline-block;width:9px;height:9px;border-radius:2px;flex:none}}
 .tipbox .rr span{{margin-left:auto;padding-left:16px;font-weight:600}}
-.tipbox .dd{{color:#c3c9d2;border-top:1px solid rgba(255,255,255,.16);margin-top:5px;padding-top:4px;
+.tipbox .dd{{color:var(--tip-dim);border-top:1px solid var(--tip-div);margin-top:5px;padding-top:4px;
 display:flex;justify-content:space-between;gap:18px;font-size:11.5px}}
 </style>
 </head>
@@ -179,9 +258,9 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}}
     <span class="seg" id="seg">{btn_html}</span>
   </h2>
   <svg class="chart" id="chartNav" viewBox="0 0 1000 320" preserveAspectRatio="none"></svg>
-  <div class="legend"><span><i style="background:#3b6fd4"></i>080006（平替）</span>
-  <span><i style="background:#e8912f"></i>270042（纳指100基准）</span>
-  <span id="rangeInfo" style="color:#a0a6ae"></span></div>
+  <div class="legend"><span><i class="sw-a"></i>080006（平替）</span>
+  <span><i class="sw-b"></i>270042（纳指100基准）</span>
+  <span id="rangeInfo" class="muted"></span></div>
   <div class="tips">{acc_txt}</div>
 </div>
 
@@ -191,8 +270,8 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}}
     <span class="seg" id="seg2">{btn_html}</span>
   </h2>
   <svg class="chart" id="chartDev" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
-  <div class="legend"><span><i style="background:#2baac1"></i>累计超额偏差</span>
-  <span style="color:#a0a6ae">纵轴自适应缩放</span></div>
+  <div class="legend"><span><i class="sw-dev"></i>累计超额偏差</span>
+  <span class="muted">纵轴自适应缩放</span></div>
   <div class="tips">这条线就是「漂移计」——越平越好。出现单边持续抬升或下滑需警惕。</div>
 </div>
 
@@ -230,9 +309,18 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}}
 const DATA = {payload};
 const NS = 'http://www.w3.org/2000/svg';
 
-function norm(arr) {{
-  const b = arr[0];
-  return arr.map(v => +(v / b * 100).toFixed(3));
+// ---------- 图表配色：从 CSS 变量取 ----------
+// 深浅两套配色只在 <style> 里定义一次，线条/网格/坐标轴颜色跟着系统主题走。
+let T = {{}};
+function theme() {{
+  const cs = getComputedStyle(document.documentElement);
+  const v = n => cs.getPropertyValue(n).trim();
+  return {{
+    a: v('--c-a'), b: v('--c-b'), dev: v('--c-dev'),
+    grid: v('--grid'), gridStrong: v('--grid-strong'),
+    axis: v('--axis'), zero: v('--zero'), zero2: v('--zero2'),
+    card: v('--bg-card')
+  }};
 }}
 
 // 累计涨跌幅（%）：区间首日 = 0，之后为相对首日的涨跌百分比
@@ -241,7 +329,7 @@ function pct(arr) {{
   return arr.map(v => +((v / b - 1) * 100).toFixed(3));
 }}
 
-function drawLines(svg, series, colors, x0, x1, y0, y1, ymin, ymax, widthTop) {{
+function drawLines(svg, series, colors, x0, x1, y0, y1, ymin, ymax) {{
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   const n = series[0].vals.length;
   const span = (ymax - ymin) || 1;
@@ -253,7 +341,7 @@ function drawLines(svg, series, colors, x0, x1, y0, y1, ymin, ymax, widthTop) {{
     const ln = document.createElementNS(NS, 'line');
     ln.setAttribute('x1', x0); ln.setAttribute('x2', x1);
     ln.setAttribute('y1', y); ln.setAttribute('y2', y);
-    ln.setAttribute('stroke', k === 4 ? '#e2e5e9' : '#eef0f2');
+    ln.setAttribute('stroke', k === 4 ? T.gridStrong : T.grid);
     ln.setAttribute('stroke-width', '1');
     svg.appendChild(ln);
   }}
@@ -279,7 +367,7 @@ function axisY(svg, ymin, ymax, y0, y1, fmt, x) {{
     const t = document.createElementNS(NS, 'text');
     t.setAttribute('x', x || 52); t.setAttribute('y', y + 4);
     t.setAttribute('text-anchor', 'end');
-    t.setAttribute('font-size', '11'); t.setAttribute('fill', '#a0a6ae');
+    t.setAttribute('font-size', '11'); t.setAttribute('fill', T.axis);
     t.textContent = fmt(v);
     svg.appendChild(t);
   }}
@@ -288,12 +376,12 @@ function axisY(svg, ymin, ymax, y0, y1, fmt, x) {{
 function labelX(svg, first, last, y) {{
   const a = document.createElementNS(NS, 'text');
   a.setAttribute('x', 62); a.setAttribute('y', y);
-  a.setAttribute('font-size', '11'); a.setAttribute('fill', '#a0a6ae');
+  a.setAttribute('font-size', '11'); a.setAttribute('fill', T.axis);
   a.textContent = first; svg.appendChild(a);
   const b = document.createElementNS(NS, 'text');
   b.setAttribute('x', 985); b.setAttribute('y', y);
   b.setAttribute('text-anchor', 'end');
-  b.setAttribute('font-size', '11'); b.setAttribute('fill', '#a0a6ae');
+  b.setAttribute('font-size', '11'); b.setAttribute('fill', T.axis);
   b.textContent = last; svg.appendChild(b);
 }}
 
@@ -315,25 +403,25 @@ function startIndex(n) {{
 // 累计偏差按**日期**取值：它比 dates 少一天（首日无偏差），按索引切会错位
 const DEV_MAP = new Map((DATA.dev || []).map(p => [p[0], p[1]]));
 
-function render(rangeKey) {{
-  const n = DATA.ranges[rangeKey];
+// 两个面板各存各的选中区间，互不相干
+const state = {{ nav: DATA.default || '3m', dev: DATA.default || '3m' }};
+
+// ---------- 图①：净值走势对比 ----------
+function renderNav() {{
+  T = theme();
+  const n = DATA.ranges[state.nav];
   const s = startIndex(n);
-  // 有效数据不足以撑满 n 天（被有效起点夹住，或本身就不够长）
-  const capped = DATA.dates.length - s < n;
   const dts = DATA.dates.slice(s);
   const av = pct(DATA.A.slice(s));
   const bv = pct(DATA.B.slice(s));
-  const dvv = dts.map(d => DEV_MAP.get(d)).filter(v => v !== undefined);
-  if (!dvv.length) dvv.push(0);
 
-  // 图1（累计涨跌幅，首日 0%）
   const svg1 = document.getElementById('chartNav');
   const all = av.concat(bv, 0);
   const lo = Math.min(...all), hi = Math.max(...all);
   const pad = Math.max((hi - lo) * 0.12, 0.3);
   const ymin1 = lo - pad, ymax1 = hi + pad;
   drawLines(svg1, [{{vals: av}}, {{vals: bv, dash: true}}],
-            ['#3b6fd4', '#e8912f'], 62, 985, 18, 268, ymin1, ymax1);
+            [T.a, T.b], 62, 985, 18, 268, ymin1, ymax1);
   axisY(svg1, ymin1, ymax1, 18, 268, v => (v > 0 ? '+' : '') + v.toFixed(1) + '%');
   // 0% 基准线
   if (ymin1 < 0 && ymax1 > 0) {{
@@ -341,18 +429,30 @@ function render(rangeKey) {{
     const zl = document.createElementNS(NS, 'line');
     zl.setAttribute('x1', 62); zl.setAttribute('x2', 985);
     zl.setAttribute('y1', zy); zl.setAttribute('y2', zy);
-    zl.setAttribute('stroke', '#c9ccd2'); zl.setAttribute('stroke-width', '1.5');
+    zl.setAttribute('stroke', T.zero); zl.setAttribute('stroke-width', '1.5');
     svg1.insertBefore(zl, svg1.children[5] || null);
   }}
   labelX(svg1, dts[0], dts[dts.length - 1], 296);
   setupNavHover(dts, av, bv, ymin1, ymax1);
 
-  // 图2（累计偏差，自适应缩放）
+  document.getElementById('rangeInfo').textContent =
+    '显示 ' + dts.length + ' 个交易日：' + dts[0] + ' ~ ' + dts[dts.length - 1];
+}}
+
+// ---------- 图②：累计偏差走势 ----------
+function renderDev() {{
+  T = theme();
+  const n = DATA.ranges[state.dev];
+  const s = startIndex(n);
+  const dts = DATA.dates.slice(s);
+  const dvv = dts.map(d => DEV_MAP.get(d)).filter(v => v !== undefined);
+  if (!dvv.length) dvv.push(0);
+
   const svg2 = document.getElementById('chartDev');
   const dl = Math.min(...dvv), dh = Math.max(...dvv);
   const dpad = Math.max((dh - dl) * 0.15, 0.15);
   const ylo = dl - dpad, yhi = dh + dpad;
-  drawLines(svg2, [{{vals: dvv}}], ['#2baac1'], 62, 985, 18, 208, ylo, yhi);
+  drawLines(svg2, [{{vals: dvv}}], [T.dev], 62, 985, 18, 208, ylo, yhi);
   axisY(svg2, ylo, yhi, 18, 208, v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%');
   // 零轴
   if (ylo < 0 && yhi > 0) {{
@@ -360,14 +460,10 @@ function render(rangeKey) {{
     const zl = document.createElementNS(NS, 'line');
     zl.setAttribute('x1', 62); zl.setAttribute('x2', 985);
     zl.setAttribute('y1', zy); zl.setAttribute('y2', zy);
-    zl.setAttribute('stroke', '#d8dbe0'); zl.setAttribute('stroke-width', '1.5');
+    zl.setAttribute('stroke', T.zero2); zl.setAttribute('stroke-width', '1.5');
     svg2.insertBefore(zl, svg2.children[5] || null);
   }}
   labelX(svg2, dts[0], dts[dts.length - 1], 238);
-
-  document.getElementById('rangeInfo').textContent =
-    '显示 ' + dts.length + ' 个交易日：' + dts[0] + ' ~ ' + dts[dts.length - 1] +
-    (capped ? '（不足 ' + n + ' 日，起点仍为 ' + DATA.validFrom + '）' : '');
 }}
 
 // ---------- 图1 鼠标悬停浮窗 ----------
@@ -381,8 +477,10 @@ function setupNavHover(dts, av, bv, ymin, ymax) {{
   g.setAttribute('display', 'none');
   svg.appendChild(g);
   const n = dts.length;
+  // 颜色在重建时固化，保证悬停层与已画出的两条线同色
   NAV = {{
     dts, av, bv, n,
+    colA: T.a, colB: T.b, axis: T.axis, card: T.card,
     px: i => 62 + (n <= 1 ? 0 : i * (985 - 62) / (n - 1)),
     py: v => 268 - (v - ymin) / ((ymax - ymin) || 1) * (268 - 18)
   }};
@@ -409,14 +507,14 @@ function bindNavHover() {{
     const vl = document.createElementNS(NS, 'line');
     vl.setAttribute('x1', x); vl.setAttribute('x2', x);
     vl.setAttribute('y1', 18); vl.setAttribute('y2', 268);
-    vl.setAttribute('stroke', '#b9bdc6'); vl.setAttribute('stroke-width', '1');
+    vl.setAttribute('stroke', NAV.axis); vl.setAttribute('stroke-width', '1');
     vl.setAttribute('stroke-dasharray', '3 3');
     g.appendChild(vl);
     // 两条线上的圆点
-    [['#3b6fd4', ya], ['#e8912f', yb]].forEach(([col, y]) => {{
+    [[NAV.colA, ya], [NAV.colB, yb]].forEach(([col, y]) => {{
       const dot = document.createElementNS(NS, 'circle');
       dot.setAttribute('cx', x); dot.setAttribute('cy', y);
-      dot.setAttribute('r', 4); dot.setAttribute('fill', '#fff');
+      dot.setAttribute('r', 4); dot.setAttribute('fill', NAV.card);
       dot.setAttribute('stroke', col); dot.setAttribute('stroke-width', '2');
       g.appendChild(dot);
     }});
@@ -424,8 +522,8 @@ function bindNavHover() {{
     const diff = NAV.av[i] - NAV.bv[i];
     tip.innerHTML =
       '<div class="td">' + NAV.dts[i] + ' · 自首日起第 ' + (i + 1) + ' 个交易日</div>' +
-      '<div class="rr"><i style="background:#3b6fd4"></i>080006<span>' + fmtPct(NAV.av[i]) + '</span></div>' +
-      '<div class="rr"><i style="background:#e8912f"></i>270042<span>' + fmtPct(NAV.bv[i]) + '</span></div>' +
+      '<div class="rr"><i class="sw-a"></i>080006<span>' + fmtPct(NAV.av[i]) + '</span></div>' +
+      '<div class="rr"><i class="sw-b"></i>270042<span>' + fmtPct(NAV.bv[i]) + '</span></div>' +
       '<div class="dd"><span>累计偏差</span><span>' + fmtPct(diff) + '</span></div>';
     tip.style.display = 'block';
 
@@ -444,18 +542,28 @@ function bindNavHover() {{
   }});
 }}
 
-function bindSeg(id) {{
+// 每个按钮组各管各的那张图 —— 点②不会再带着①一起变
+function bindSeg(id, key, draw) {{
   document.getElementById(id).addEventListener('click', e => {{
     const b = e.target.closest('button');
     if (!b) return;
     document.querySelectorAll('#' + id + ' button').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
-    render(b.dataset.r);
+    state[key] = b.dataset.r;
+    draw();
   }});
 }}
-bindSeg('seg'); bindSeg('seg2');
-render(DATA.default || '3m');
+bindSeg('seg', 'nav', renderNav);
+bindSeg('seg2', 'dev', renderDev);
+renderNav();
+renderDev();
 bindNavHover();
+
+// 系统深浅色切换时重绘（线条颜色取自 CSS 变量，不重绘会留在旧配色）
+const MQ = window.matchMedia('(prefers-color-scheme: dark)');
+const onScheme = () => {{ renderNav(); renderDev(); }};
+if (MQ.addEventListener) MQ.addEventListener('change', onScheme);
+else if (MQ.addListener) MQ.addListener(onScheme);
 </script>
 </body></html>'''
 
