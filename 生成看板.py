@@ -98,6 +98,9 @@ html = f'''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<!-- 内联 SVG 图标：页面本就要「自包含、零外链」，顺带消掉 favicon.ico 的 404 -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230a84ff'/><path d='M12 44 L26 29 L38 38 L52 19' fill='none' stroke='%23fff' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 <title>基金漂移监控看板</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
