@@ -57,7 +57,8 @@ elif newd:
 elif rep.get('first_run'):
     backfill_html = '<div class="tips">🆕 首次运行，已初始化历史净值缓存</div>'
 else:
-    backfill_html = '<div class="tips">ℹ️ 无新增交易日（净值尚未更新）</div>'
+    # 「无新增交易日」是绝大多数时候的常态，没必要每次占一行（2026-10-09 起去掉）
+    backfill_html = ''
 
 # 数据以 JSON 内嵌，供前端切换时间范围
 #
@@ -184,7 +185,7 @@ color-scheme:light dark;
 body{{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
 background:var(--bg-page);color:var(--txt);padding:22px;line-height:1.6}}
 .wrap{{max-width:1080px;margin:0 auto}}
-h1{{font-size:21px;font-weight:600;margin-bottom:4px}}
+h1{{font-size:21px;font-weight:600;margin-bottom:18px}}
 .sub{{color:var(--txt-3);font-size:13px;margin-bottom:18px}}
 .grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}}
 .card{{background:var(--bg-card);border-radius:10px;padding:14px 16px;border:1px solid var(--line)}}
@@ -234,7 +235,6 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}}
 <body><div id="tip" class="tipbox"></div>
 <div class="wrap">
 <h1>基金漂移监控看板 <span class="badge {status_cls}">{status_txt}</span></h1>
-<div class="sub">巡检时间 {rep['run_at']} · 数据区间 {rep['range']} · 推送通道：{channel_name}</div>
 
 <div class="grid">
   <div class="card"><div class="k">080006 长盛环球行业混合A</div>
@@ -562,11 +562,31 @@ renderNav();
 renderDev();
 bindNavHover();
 
-// 系统深浅色切换时重绘（线条颜色取自 CSS 变量，不重绘会留在旧配色）
+// ---------- 系统深浅色变化时重绘 ----------
+// 页面底色/文字是纯 CSS，浏览器自己会跟着变；但**图表颜色是画上去的 SVG 属性**，
+// 必须重绘才会更新，所以要主动对齐一次。
+//
+// 正常情况浏览器会发 media query 的 change 事件。但有些环境不发：
+//   · iOS Safari 从后台切回前台时
+//   · 微信 / QQ 等 App 内置 WebView（跟随的是宿主 App 的外观，不是浏览器）
+// 只靠 change 的话，可能出现「底色变了、线条还是旧色」甚至整页不更新，
+// 所以页面重新可见 / 获得焦点时再兜底对一次。
 const MQ = window.matchMedia('(prefers-color-scheme: dark)');
-const onScheme = () => {{ renderNav(); renderDev(); }};
-if (MQ.addEventListener) MQ.addEventListener('change', onScheme);
-else if (MQ.addListener) MQ.addListener(onScheme);
+
+function resyncTheme() {{
+  const fresh = theme();
+  if (fresh.a === T.a && fresh.grid === T.grid) return;   // 配色没变，不必重画
+  renderNav();
+  renderDev();
+}}
+
+if (MQ.addEventListener) MQ.addEventListener('change', resyncTheme);
+else if (MQ.addListener) MQ.addListener(resyncTheme);
+document.addEventListener('visibilitychange', () => {{
+  if (!document.hidden) resyncTheme();
+}});
+window.addEventListener('focus', resyncTheme);
+window.addEventListener('pageshow', resyncTheme);
 </script>
 </body></html>'''
 
