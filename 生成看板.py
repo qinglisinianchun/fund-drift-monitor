@@ -59,14 +59,19 @@ else:
     backfill_html = '<div class="tips">ℹ️ 无新增交易日（净值尚未更新）</div>'
 
 # 数据以 JSON 内嵌，供前端切换时间范围
-# 范围按钮按「有效区间长度」自适应：只有积累足够数据才显示对应按钮
+#
+# 范围按钮：四个区间**恒定显示**（2026-10-09 起改）。
+#   原来按「有效数据长度」自适应隐藏 6m/1y（n_valid > n*0.6 才出现）：
+#   但有效区间被 monitor.py 的 VALID_FROM = 2026-07-01 钉死，
+#   短期内根本攒不到 125 / 250 个交易日，结果是用户想主动看更长区间却没有按钮可点。
+#   现在一律显示；点更长区间时，前端会把起点夹到 VALID_FROM（见下面的 startIndex）。
 n_valid = len(dates)
 RANGE_DEFS = [('1m', 22, '近1月'), ('3m', 62, '近3月'), ('6m', 125, '近半年'), ('1y', 250, '近1年')]
-avail = [(k, n, lbl) for k, n, lbl in RANGE_DEFS if n_valid > n * 0.6]
-# 至少保留两项；默认选中倒数第二项（或最大可用项）
-if len(avail) < 2:
-    avail = [(k, n, lbl) for k, n, lbl in RANGE_DEFS[:2]]
-default_range = avail[-1][0] if len(avail) > 1 else avail[0][0]
+avail = RANGE_DEFS
+# 默认选中「能装满、且不越过有效起点」的最大区间 —— 与改动前保持一致（当前落在「近3月」）。
+# 不直接取 avail[-1]，否则默认视图会被改成「近1年」，属改动外的行为变化。
+fits = [k for k, n, _ in RANGE_DEFS if n_valid >= n]
+default_range = fits[-1] if fits else RANGE_DEFS[0][0]
 
 btn_html = ''.join(
     f'<button data-r="{k}"{" class=\"on\"" if k == default_range else ""}>{lbl}</button>'
@@ -80,13 +85,14 @@ payload = json.dumps({
     'ranges': {k: n for k, n, _ in avail},
     'default': default_range,
     'validFrom': VALID_FROM,
+    'nValid': n_valid,
 }, ensure_ascii=False)
 
-# 有效区间说明
+# 有效区间说明：讲清「为什么点近半年 / 近一年，也只从 2026-07-01 起」
 acc_days = n_valid
-acc_txt = f'当前已积累 <b>{acc_days}</b> 个交易日有效数据（{dates[0]} 起）'
-if acc_days < 250:
-    acc_txt += f'。随时间推进将自然补齐至一年，届时「近1年」等更长期按钮会自动出现。'
+acc_txt = (f'有效区间自 <b>{dates[0]}</b> 起，共 <b>{acc_days}</b> 个交易日。'
+           f'两基金在 {VALID_FROM} 之前不具可比性，'
+           f'因此「近半年」「近1年」也一律以该日为起点。')
 
 html = f'''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -176,6 +182,7 @@ display:flex;justify-content:space-between;gap:18px;font-size:11.5px}}
   <div class="legend"><span><i style="background:#3b6fd4"></i>080006（平替）</span>
   <span><i style="background:#e8912f"></i>270042（纳指100基准）</span>
   <span id="rangeInfo" style="color:#a0a6ae"></span></div>
+  <div class="tips">{acc_txt}</div>
 </div>
 
 <div class="panel">
@@ -290,15 +297,34 @@ function labelX(svg, first, last, y) {{
   b.textContent = last; svg.appendChild(b);
 }}
 
-// 取最近 n 天
-function slice(arr, n) {{ return arr.slice(Math.max(0, arr.length - n)); }}
+// 取最近 n 天，但**不得越过有效起点 VALID_FROM**。
+// 两基金在 2026-07-01 之前不具可比性，因此点「近半年 / 近一年」时，
+// 起点一律夹到 VALID_FROM —— 起始日期就是 2026-07-01。
+function startIndex(n) {{
+  const total = DATA.dates.length;
+  let s = Math.max(0, total - n);
+  const vf = DATA.validFrom;
+  if (vf) {{
+    let i = 0;
+    while (i < total && DATA.dates[i] < vf) i++;
+    s = Math.max(s, i);
+  }}
+  return s;
+}}
+
+// 累计偏差按**日期**取值：它比 dates 少一天（首日无偏差），按索引切会错位
+const DEV_MAP = new Map((DATA.dev || []).map(p => [p[0], p[1]]));
 
 function render(rangeKey) {{
   const n = DATA.ranges[rangeKey];
-  const dts = slice(DATA.dates, n);
-  const av = pct(slice(DATA.A, n));
-  const bv = pct(slice(DATA.B, n));
-  const dvv = slice(DATA.dev.map(x => x[1]), n);
+  const s = startIndex(n);
+  // 有效数据不足以撑满 n 天（被有效起点夹住，或本身就不够长）
+  const capped = DATA.dates.length - s < n;
+  const dts = DATA.dates.slice(s);
+  const av = pct(DATA.A.slice(s));
+  const bv = pct(DATA.B.slice(s));
+  const dvv = dts.map(d => DEV_MAP.get(d)).filter(v => v !== undefined);
+  if (!dvv.length) dvv.push(0);
 
   // 图1（累计涨跌幅，首日 0%）
   const svg1 = document.getElementById('chartNav');
@@ -340,7 +366,8 @@ function render(rangeKey) {{
   labelX(svg2, dts[0], dts[dts.length - 1], 238);
 
   document.getElementById('rangeInfo').textContent =
-    '显示 ' + dts.length + ' 个交易日：' + dts[0] + ' ~ ' + dts[dts.length - 1];
+    '显示 ' + dts.length + ' 个交易日：' + dts[0] + ' ~ ' + dts[dts.length - 1] +
+    (capped ? '（不足 ' + n + ' 日，起点仍为 ' + DATA.validFrom + '）' : '');
 }}
 
 // ---------- 图1 鼠标悬停浮窗 ----------
