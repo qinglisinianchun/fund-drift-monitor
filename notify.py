@@ -83,21 +83,37 @@ def load_cfg():
     return cfg
 
 
-def build_text(rep, plain=False):
-    """构造提醒正文（精简版：一屏看完）"""
+def build_text(rep, md=False):
+    """构造预警正文，返回 (text, title)。
+
+    md=True  → Server酱 Markdown：空行分段 + 列表 + 加粗关键数字
+    md=False → 纯文本（企业微信 text / PushPlus txt，保持原格式）
+    """
     la, lb = rep['latest']['A'], rep['latest']['B']
-    lines = [
-        f"🚨 080006 漂移预警 · {rep['date']}",
-        '',
-        f"080006  {la['nav']}  {la['chg']:+.2f}%",
-        f"270042  {lb['nav']}  {lb['chg']:+.2f}%",
-    ]
+    if md:
+        lines = [
+            f"### 🚨 080006 漂移预警 · {rep['date']}",
+            '',
+            '**最新净值**',
+            f"- 080006 长盛环球：**{la['nav']}**（{la['chg']:+.2f}%）",
+            f"- 270042 广发纳指：**{lb['nav']}**（{lb['chg']:+.2f}%）",
+        ]
+    else:
+        lines = [
+            f"🚨 080006 漂移预警 · {rep['date']}",
+            '',
+            f"080006  {la['nav']}  {la['chg']:+.2f}%",
+            f"270042  {lb['nav']}  {lb['chg']:+.2f}%",
+        ]
 
     # 补跑提示（只在有补跑时显示，一行内）
     bf = rep.get('backfill') or []
     if bf:
         s = f'{len(bf)}天（{bf[0]}~{bf[-1]}）' if len(bf) > 2 else '、'.join(bf)
-        lines.append(f'含补跑 {s}')
+        if md:
+            lines += ['', f'**含补跑**：{s}']
+        else:
+            lines.append(f'含补跑 {s}')
 
     # 只列出异常窗口：破红灯线 或 连续触发 或 单日超阈
     def is_hot(w):
@@ -107,43 +123,55 @@ def build_text(rep, plain=False):
     bad = [w for w in rep['windows'] if is_hot(w)]
     if bad:
         lines.append('')
+        if md:
+            lines.append('**异常窗口**')
         for w in bad:
             red = (w['triggered']
                    or abs(w['current_dev']) > ALERT_LINE.get(w['window'], 99))
             mark = '🔴' if red else '🟡'
             if w['triggered']:
-                extra = f" 连续{w['hit_run']}/{w['need_days']}天"
-            elif abs(w['current_dev']) > ALERT_LINE.get(w['window'], 99):
-                extra = ' 破红灯线'
+                extra = f"，连续{w['hit_run']}/{w['need_days']}天"
+            elif red:
+                extra = '，破红灯线'
             else:
-                extra = f" 连续{w['hit_run']}/{w['need_days']}天"
-            lines.append(f"{mark} {w['window']}日 {w['current_dev']:+.2f}%"
-                         f"（阈值±{w['threshold']}%）{extra}")
+                extra = f"，连续{w['hit_run']}/{w['need_days']}天"
+            if md:
+                lines.append(f"- {mark} {w['window']}日 **{w['current_dev']:+.2f}%**"
+                             f"（阈值 ±{w['threshold']}%{extra}）")
+            else:
+                lines.append(f"{mark} {w['window']}日 {w['current_dev']:+.2f}%"
+                             f"（阈值±{w['threshold']}%）{extra}")
         rest = [w for w in rep['windows'] if w not in bad]
         if rest:
-            lines.append('  ' + ' / '.join(
-                f"{w['window']}日{w['current_dev']:+.2f}%" for w in rest) + '  正常')
+            joined = ' / '.join(f"{w['window']}日 {w['current_dev']:+.2f}%"
+                                for w in rest)
+            lines.append('正常：' + joined if md else '  ' + joined + '  正常')
 
     # 红灯（单独强调）
     if rep['alerts']:
         lines.append('')
-        lines.append('🚨 红灯：' + rep['alerts'][0])
+        lines.append(f"**🚨 红灯**：{rep['alerts'][0]}" if md
+                     else '🚨 红灯：' + rep['alerts'][0])
 
-    # 结论：一行
-    lines += [
-        '',
-        '可能是它开始调仓、不再是纳指平替。',
-        '建议查持仓公告确认，必要时换回被动指数。',
-    ]
-    return '\n'.join(lines)
+    # 结论
+    if md:
+        lines += ['', '**可能已开始调仓、不再是纳指平替。**',
+                  '建议查持仓公告确认，必要时换回被动指数。']
+    else:
+        lines += ['', '可能是它开始调仓、不再是纳指平替。',
+                  '建议查持仓公告确认，必要时换回被动指数。']
+
+    tag = '🚨' if rep['alerts'] else '🟡'
+    title = f"{tag} 080006 漂移预警 {rep['date'][5:].replace('-', '/')}"
+    return '\n'.join(lines), title
 
 
-def build_weekly(rep):
-    """构造每周例行报告（无论是否漂移都推送）。
+def build_weekly(rep, md=False):
+    """构造每周例行报告（无论是否漂移都推送），返回 (正文, 简短标题)。
 
     口径：以「最新净值日」所在周的周一为起点、最新净值日为终点，
     覆盖刚结束的这个交易周（周日运行即周一~周五）。正文标注明确日期范围。
-    返回 (正文, 简短标题)。
+    md=True → Server酱 Markdown：结论前置 + 空行分段 + 列表，微信里读起来不挤。
     """
     daily = (rep.get('daily_dev') or {}).get('series') or []
     if not daily:
@@ -182,39 +210,72 @@ def build_weekly(rep):
             mark = '🟡'
         else:
             mark = '✅'
-        win_lines.append(
-            f"{mark} {L:>2}日  周末{end_v:+.2f}% / 周内峰值{peak:.2f}%"
-            f"（阈值±{thr}%，红线±{redline}%）")
+        if md:
+            win_lines.append(
+                f"- {mark} **{L}日** 周末 {end_v:+.2f}% / 峰值 {peak:.2f}%"
+                f"（阈值 ±{thr}%）")
+        else:
+            win_lines.append(
+                f"{mark} {L:>2}日  周末{end_v:+.2f}% / 周内峰值{peak:.2f}%"
+                f"（阈值±{thr}%，红线±{redline}%）")
 
     la, lb = rep['latest']['A'], rep['latest']['B']
     cur_bad = bool(rep.get('triggers') or rep.get('alerts'))
     span = f'{d0[5:].replace("-", "/")}~{d1[5:].replace("-", "/")}'
-    title = f'080006 漂移周报 {span}'
+    min_thr = min(w['threshold'] for w in rep['windows'])
 
     if week_red or cur_bad:
-        head = f"🚨 080006 漂移周报 · {span}"
-        tail = ['', '⚠️ 本周偏差曾明显放大或突破红线，可能已开始调仓。',
-                '建议查持仓公告确认，必要时换回被动指数。']
-    elif week_peak > min(w['threshold'] for w in rep['windows']):
-        head = f"🟡 080006 漂移周报 · {span}"
-        tail = ['', '🟡 本周偏差略有放大但未连续确认，保持观察，下周周报继续跟踪。']
+        status, title = '🚨', f'🚨 080006 漂移周报 {span}'
+        concl = ('**🚨 本周偏差曾明显放大或突破红线，可能已开始调仓。**'
+                 '建议查持仓公告确认，必要时换回被动指数。')
+    elif week_peak > min_thr:
+        status, title = '🟡', f'🟡 080006 漂移周报 {span}'
+        concl = '**🟡 本周偏差略有放大但未连续确认，保持观察，下周周报继续跟踪。**'
     else:
-        head = f"📋 080006 漂移周报 · {span}"
-        tail = ['', f'✅ 本周（{len(week)}个交易日）两基金走势贴合、偏差平稳，',
-                '080006 仍是纳指100平替，监控运行正常。']
+        status, title = '✅', f'✅ 080006 漂移周报 {span}'
+        concl = (f'**✅ 本周（{len(week)}个交易日）两基金走势贴合、偏差平稳，'
+                 '080006 仍是纳指100平替。**')
 
-    lines = [head, '',
-             f'区间 {d0} ~ {d1}（{len(week)}个交易日）',
-             f'080006  {la["nav"]}  {la["chg"]:+.2f}%',
-             f'270042  {lb["nav"]}  {lb["chg"]:+.2f}%', '',
-             f'当日偏差  平均{avg:+.3f}%  最大{mx:+.3f}%  最小{mn:+.3f}%', '',
-             '各窗口（周末值 / 周内峰值）：']
+    if md:
+        lines = [
+            f'### {status} 漂移周报 {span}',
+            '',
+            concl,
+            '',
+            f'**区间** {d0} ~ {d1}（{len(week)} 个交易日）',
+            '',
+            '**最新净值**',
+            f"- 080006 长盛环球：**{la['nav']}**（{la['chg']:+.2f}%）",
+            f"- 270042 广发纳指：**{lb['nav']}**（{lb['chg']:+.2f}%）",
+            '',
+            f'**当日偏差** 平均 {avg:+.3f}% · 最大 {mx:+.3f}% · 最小 {mn:+.3f}%',
+            '',
+            '**各窗口**（周末值 / 周内峰值）',
+        ]
+    else:
+        head = f'{status} 080006 漂移周报 · {span}'
+        lines = [head, '',
+                 f'区间 {d0} ~ {d1}（{len(week)}个交易日）',
+                 f"080006  {la['nav']}  {la['chg']:+.2f}%",
+                 f"270042  {lb['nav']}  {lb['chg']:+.2f}%", '',
+                 f'当日偏差  平均{avg:+.3f}%  最大{mx:+.3f}%  最小{mn:+.3f}%', '',
+                 '各窗口（周末值 / 周内峰值）：']
     lines += win_lines
     if rep.get('alerts'):
-        lines += ['', '本周红灯记录：'] + [f'🚨 {a}' for a in rep['alerts']]
+        lines += ['', ('**本周红灯记录**' if md else '本周红灯记录：')]
+        lines += [(f'- 🚨 {a}' if md else f'🚨 {a}') for a in rep['alerts']]
     if rep.get('triggers'):
-        lines += ['', '本周黄灯记录：'] + [f'🟡 {t}' for t in rep['triggers']]
-    lines += tail
+        lines += ['', ('**本周黄灯记录**' if md else '本周黄灯记录：')]
+        lines += [(f'- 🟡 {t}' if md else f'🟡 {t}') for t in rep['triggers']]
+    if not md:
+        if week_red or cur_bad:
+            lines += ['', '⚠️ 本周偏差曾明显放大或突破红线，可能已开始调仓。',
+                      '建议查持仓公告确认，必要时换回被动指数。']
+        elif week_peak > min_thr:
+            lines += ['', '🟡 本周偏差略有放大但未连续确认，保持观察，下周周报继续跟踪。']
+        else:
+            lines += ['', f'✅ 本周（{len(week)}个交易日）两基金走势贴合、偏差平稳，',
+                      '080006 仍是纳指100平替，监控运行正常。']
     return '\n'.join(lines), title
 
 
@@ -251,6 +312,9 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else 'alert'
     cfg = load_cfg()
     ch = cfg.get('channel', 'none')
+    # Server酱 的 desp 按 Markdown 渲染（单换行会被折叠，须空行分段）；
+    # 企业微信 text / PushPlus txt 是纯文本，保持原格式。
+    md = (ch == 'serverchan')
 
     if mode == 'weekly':
         latest_path = os.path.join(DATA, 'latest.json')
@@ -258,15 +322,14 @@ def main():
             print('周报生成失败：数据/latest.json 不存在，请先运行 monitor.py')
             return 1
         rep = json.load(open(latest_path, encoding='utf-8'))
-        text, title = build_weekly(rep)
+        text, title = build_weekly(rep, md=md)
         kind_label = '每周周报'
     else:
         if not os.path.exists(TRIG):
             print('无待推送内容（未触发）')
             return 0
         rep = json.load(open(TRIG, encoding='utf-8'))
-        text = build_text(rep)
-        title = '080006 漂移预警'
+        text, title = build_text(rep, md=md)
         kind_label = '漂移预警'
 
     ok, detail = False, 'skipped'
