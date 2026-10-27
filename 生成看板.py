@@ -183,10 +183,10 @@ background:var(--bg-page);color:var(--txt);padding:22px;line-height:1.6}}
 .wrap{{max-width:1080px;margin:0 auto}}
 h1{{font-size:21px;font-weight:600;margin-bottom:18px}}
 .sub{{color:var(--txt-3);font-size:13px;margin-bottom:18px}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px}}
 .card{{background:var(--bg-card);border-radius:10px;padding:14px 16px;border:1px solid var(--line)}}
 .card .k{{font-size:12px;color:var(--txt-3);margin-bottom:5px}}
-.card .v{{font-size:20px;font-weight:600;letter-spacing:-.3px}}
+.card .v{{font-size:20px;font-weight:600;letter-spacing:-.3px;white-space:nowrap}}
 .card .v span{{margin-left:7px}}
 .card .d{{font-size:12px;color:var(--txt-3);margin-top:3px}}
 .panel{{background:var(--bg-card);border-radius:10px;padding:18px;border:1px solid var(--line);margin-bottom:16px}}
@@ -241,11 +241,14 @@ body{{padding:12px}}
 .panel{{padding:14px}}
 .panel h2{{font-size:clamp(12px, 3.5vw, 15px)}}
 th,td{{padding:7px 6px;font-size:12.5px}}
+.card .v{{font-size:17px}}
+.card .v span{{font-size:.85em;margin-left:5px}}
 }}
 /* 320px 一级的老机型再挤一挤，保证长标题仍然一行放得下 */
 @media (max-width: 359px) {{
 body{{padding:10px}}
 .panel{{padding:12px}}
+.card .v{{font-size:14.5px}}
 }}
 </style>
 </head>
