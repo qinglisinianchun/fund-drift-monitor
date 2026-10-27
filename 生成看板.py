@@ -191,6 +191,7 @@ h1{{font-size:21px;font-weight:600;margin-bottom:18px}}
 .card{{background:var(--bg-card);border-radius:10px;padding:14px 16px;border:1px solid var(--line)}}
 .card .k{{font-size:12px;color:var(--txt-3);margin-bottom:5px}}
 .card .v{{font-size:20px;font-weight:600;letter-spacing:-.3px}}
+.card .v span{{margin-left:7px}}
 .card .d{{font-size:12px;color:var(--txt-3);margin-top:3px}}
 .panel{{background:var(--bg-card);border-radius:10px;padding:18px;border:1px solid var(--line);margin-bottom:16px}}
 .panel h2{{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;
@@ -258,13 +259,11 @@ body{{padding:10px}}
 
 <div class="grid">
   <div class="card"><div class="k">080006 长盛环球行业混合A</div>
-    <div class="v">{la['nav']}</div>
-    <div class="d {'pos' if (la['chg'] or 0) > 0 else 'neg'}">{la['chg']:+.2f}% · {la['d']}</div>
-    <div class="d">申购状态：{la['sg']}</div></div>
+    <div class="v {'pos' if (la['chg'] or 0) > 0 else 'neg'}">{la['nav']} <span>{la['chg']:+.2f}%</span></div>
+    <div class="d">{la['d']} · 申购状态：{la['sg']}</div></div>
   <div class="card"><div class="k">270042 广发纳指100ETF联接A</div>
-    <div class="v">{lb['nav']}</div>
-    <div class="d {'pos' if (lb['chg'] or 0) > 0 else 'neg'}">{lb['chg']:+.2f}% · {lb['d']}</div>
-    <div class="d">申购状态：{lb['sg']}</div></div>
+    <div class="v {'pos' if (lb['chg'] or 0) > 0 else 'neg'}">{lb['nav']} <span>{lb['chg']:+.2f}%</span></div>
+    <div class="d">{lb['d']} · 申购状态：{lb['sg']}</div></div>
   <div class="card"><div class="k">最新交易日偏差</div>
     <div class="v {'pos' if rep['daily_dev']['current'] > 0 else 'neg'}">{rep['daily_dev']['current']:+.3f}%</div>
     <div class="d">{la['d']}</div></div>
