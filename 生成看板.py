@@ -49,15 +49,11 @@ def brief(ds, limit=8):
 
 
 bf = rep.get('backfill') or []
-newd = rep.get('new_dates') or []
 if bf:
     backfill_html = f'<div class="tips warn">🔄 <b>本次补跑</b>：{brief(bf)}（上次未开机/未运行，已自动补齐）</div>'
-elif newd:
-    backfill_html = f'<div class="tips">📥 本次新拉取净值：{brief(newd)}</div>'
-elif rep.get('first_run'):
-    backfill_html = '<div class="tips">🆕 首次运行，已初始化历史净值缓存</div>'
 else:
-    # 「无新增交易日」是绝大多数时候的常态，没必要每次占一行（2026-10-09 起去掉）
+    # 「本次新拉取净值 / 首次运行」提示 2026-10-27 起去掉：
+    # 日期在卡片、走势图、页脚已出现多次，这行是重复信息，老胡明确说不要
     backfill_html = ''
 
 # 数据以 JSON 内嵌，供前端切换时间范围
