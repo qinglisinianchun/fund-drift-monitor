@@ -291,13 +291,14 @@ body{{padding:10px}}
 
 <div class="panel">
   <h2>
-    <span class="ttl">② 累计偏差走势（080006 相对纳指100 的超额）</span>
+    <span class="ttl">② 每日偏差走势（080006 当日收益 − 纳指100 当日收益）</span>
     <span class="seg" id="seg2">{btn_html}</span>
   </h2>
   <svg class="chart" id="chartDev" viewBox="0 0 1000 260" preserveAspectRatio="none"></svg>
-  <div class="legend"><span><i class="sw-dev"></i>累计超额偏差</span>
+  <div class="legend"><span><i class="sw-dev"></i>单日偏差</span>
   <span class="muted">纵轴自适应缩放</span></div>
-  <div class="tips">这条线就是「漂移计」——越平越好。出现单边持续抬升或下滑需警惕。</div>
+  <div class="tips">每个点 = 当天两只基金的收益率之差（080006 减纳指100）。
+  贴着 0 上下小幅震荡属正常；单点突然放大、或连续多日朝同一方向偏，才说明两边真的脱开了。</div>
 </div>
 
 <div class="panel">
@@ -425,7 +426,7 @@ function startIndex(n) {{
   return s;
 }}
 
-// 累计偏差按**日期**取值：它比 dates 少一天（首日无偏差），按索引切会错位
+// 单日偏差按**日期**取值：它比 dates 少一天（首日无偏差），按索引切会错位
 const DEV_MAP = new Map((DATA.dev || []).map(p => [p[0], p[1]]));
 
 // 两个面板各存各的选中区间，互不相干
@@ -464,7 +465,7 @@ function renderNav() {{
     '显示 ' + dts.length + ' 个交易日：' + dts[0] + ' ~ ' + dts[dts.length - 1];
 }}
 
-// ---------- 图②：累计偏差走势 ----------
+// ---------- 图②：每日偏差走势 ----------
 function renderDev() {{
   T = theme();
   const n = DATA.ranges[state.dev];
